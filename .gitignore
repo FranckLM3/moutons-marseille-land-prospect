@@ -1,2 +1,4 @@
 menv/*
 data/*
+
+*.geojson

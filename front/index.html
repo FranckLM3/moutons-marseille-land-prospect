@@ -3,12 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Carte Moutons Marseillais - MOS 2022 Filtré</title>
+    <title>Carte Moutons Marseillais - MOS 2022</title>
     
     <!-- Leaflet CSS -->
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
-          crossorigin=""/>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
     
     <style>
         body {
@@ -23,6 +21,53 @@
             width: 100%;
             height: 100%;
         }
+        .filter-panel {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: white;
+            padding: 15px;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+            z-index: 1000;
+            max-width: 280px;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        .filter-panel h3 {
+            margin: 0 0 10px 0;
+            font-size: 16px;
+        }
+        .filter-group {
+            margin: 10px 0;
+        }
+        .filter-group label {
+            display: block;
+            font-size: 13px;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        .checkbox-item {
+            display: block;
+            margin: 4px 0;
+            font-size: 12px;
+        }
+        .checkbox-item input {
+            margin-right: 5px;
+        }
+        .btn {
+            padding: 8px 12px;
+            margin: 5px 5px 5px 0;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 12px;
+            background: #3498db;
+            color: white;
+        }
+        .btn:hover {
+            background: #2980b9;
+        }
         .info-panel {
             position: absolute;
             top: 10px;
@@ -32,7 +77,7 @@
             border-radius: 5px;
             box-shadow: 0 2px 5px rgba(0,0,0,0.3);
             z-index: 1000;
-            max-width: 300px;
+            max-width: 250px;
         }
         .info-panel h3 {
             margin: 0 0 10px 0;
@@ -79,43 +124,80 @@
             z-index: 2000;
             font-size: 16px;
         }
+        .niv2-container {
+            margin-left: 12px;
+            font-size: 12px;
+            margin-top: 4px;
+            margin-bottom: 6px;
+        }
     </style>
 </head>
 <body>
     <div id="map"></div>
     <div class="loading" id="loading">Chargement des données...</div>
     
+        <div class="filter-panel" id="filterPanel">
+        <h3>🎛️ Filtres</h3>
+        <div class="filter-group">
+            <label>Type de territoire</label>
+            <div id="niv1Filters"></div>
+        </div>
+        <div class="filter-group">
+            <label>Commune</label>
+            <select id="communeSelect" style="width:100%;font-size:13px;">
+                <option value="all">Toutes les communes</option>
+            </select>
+        </div>
+        <!-- Les sous-catégories (niv2) seront affichées sous chaque niv1 correspondant -->
+        <button class="btn" onclick="selectAll()">Tout sélectionner</button>
+        <button class="btn" onclick="deselectAll()">Tout désélectionner</button>
+    </div>
+    
     <div class="info-panel" id="info">
         <h3>🐑 Moutons Marseillais</h3>
         <p><strong>Projet:</strong> Prospection terrains Marseille</p>
-        <p><strong>Données:</strong> MOS 2022 filtrées</p>
         <p id="feature-count">Chargement...</p>
+        <p id="visible-count"></p>
     </div>
 
     <div class="legend">
-        <h4>Légende (niv1_2022)</h4>
+        <h4>Légende</h4>
         <div class="legend-item">
-            <span class="legend-color" style="background: #f1c40f;"></span>
-            Niveau 2 (Jaune)
+            <span class="legend-color" style="background: #e74c3c;"></span>
+            TERRITOIRES URBANISÉS
+        </div>
+        <div class="legend-item">
+            <span class="legend-color" style="background: #f39c12;"></span>
+            TERRITOIRES AGRICOLES
         </div>
         <div class="legend-item">
             <span class="legend-color" style="background: #2ecc71;"></span>
-            Niveau 3 (Vert)
+            FORÊTS ET MILIEUX SEMI-NATURELS
         </div>
         <div class="legend-item">
-            <span class="legend-color" style="background: #9b59b6;"></span>
-            Autres niveaux (Violet)
+            <span class="legend-color" style="background: #3498db;"></span>
+            ZONES HUMIDES
+        </div>
+        <div class="legend-item">
+            <span class="legend-color" style="background: #1abc9c;"></span>
+            SURFACES D'EAU
         </div>
     </div>
 
     <!-- Leaflet JS -->
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-            integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
-            crossorigin=""></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
     <script>
+        // Variables globales
+        let map;
+        let allFeatures = [];
+        let currentLayer = null;
+        let uniqueNiv1 = new Set();
+        let uniqueNiv2 = new Set();
+        let selectedCommune = 'all';
+
         // Initialiser la carte centrée sur Marseille
-        const map = L.map('map').setView([43.2965, 5.3698], 12);
+        map = L.map('map').setView([43.2965, 5.3698], 12);
 
         // Ajouter le fond de carte OpenStreetMap
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -126,27 +208,36 @@
         // Fonction pour définir le style des features selon niv1_2022
         function getFeatureStyle(feature) {
             const niv1 = feature.properties ? feature.properties.niv1_2022 : null;
-            let fillColor = '#9b59b6'; // violet par défaut
-            let strokeColor = '#8e44ad';
+            let fillColor = '#95a5a6'; // gris par défaut
+            let strokeColor = '#7f8c8d';
             
-            // 2 = jaune, 3 = vert, autres = violet
-            if (niv1 == 2 || niv1 == '2') {
-                fillColor = '#f1c40f';  // jaune
-                strokeColor = '#f39c12';
+            // Couleurs selon niv1_2022
+            if (niv1 == 1 || niv1 == '1') {
+                fillColor = '#e74c3c';  // rouge - TERRITOIRES URBANISÉS
+                strokeColor = '#c0392b';
+            } else if (niv1 == 2 || niv1 == '2') {
+                fillColor = '#f39c12';  // orange - TERRITOIRES AGRICOLES
+                strokeColor = '#d68910';
             } else if (niv1 == 3 || niv1 == '3') {
-                fillColor = '#2ecc71';  // vert
+                fillColor = '#2ecc71';  // vert - FORÊTS ET MILIEUX SEMI-NATURELS
                 strokeColor = '#27ae60';
+            } else if (niv1 == 4 || niv1 == '4') {
+                fillColor = '#3498db';  // bleu - ZONES HUMIDES
+                strokeColor = '#2980b9';
+            } else if (niv1 == 5 || niv1 == '5') {
+                fillColor = '#1abc9c';  // turquoise - SURFACES D'EAU
+                strokeColor = '#16a085';
             } else {
-                fillColor = '#9b59b6';  // violet
-                strokeColor = '#8e44ad';
+                fillColor = '#95a5a6';  // gris - autres
+                strokeColor = '#7f8c8d';
             }
             
             return {
                 fillColor: fillColor,
-                weight: 2,
-                opacity: 1,
+                weight: 1.5,
+                opacity: 0.8,
                 color: strokeColor,
-                fillOpacity: 0.6
+                fillOpacity: 0.5
             };
         }
 
@@ -154,16 +245,17 @@
         function onEachFeature(feature, layer) {
             if (feature.properties) {
                 const props = feature.properties;
-                let popupContent = '<div style="max-width: 250px;">';
+                let popupContent = '<div style="max-width: 300px;">';
                 popupContent += '<h4 style="margin: 0 0 10px 0;">📍 Terrain</h4>';
                 
-                if (props.lib3_2022) popupContent += `<p><strong>Type:</strong> ${props.lib3_2022}</p>`;
-                if (props.area_ha) popupContent += `<p><strong>Surface:</strong> ${props.area_ha.toFixed(2)} ha</p>`;
-                if (props.area_m2) popupContent += `<p><strong>Surface:</strong> ${props.area_m2.toFixed(0)} m²</p>`;
+                // Labels lisibles au lieu des codes
+                if (props.lib1_2022) popupContent += `<p><strong>Type:</strong> ${props.lib1_2022}</p>`;
+                if (props.lib2_2022) popupContent += `<p><strong>Catégorie:</strong> ${props.lib2_2022}</p>`;
+                if (props.lib3_2022) popupContent += `<p><strong>Sous-type:</strong> ${props.lib3_2022}</p>`;
+                
+                if (props.area_ha) popupContent += `<p><strong>Surface:</strong> ${props.area_ha.toFixed(2)} ha (${props.area_m2 ? props.area_m2.toFixed(0) : '?'} m²)</p>`;
                 if (props.nom) popupContent += `<p><strong>Commune:</strong> ${props.nom}</p>`;
                 if (props.codeinsee) popupContent += `<p><strong>Code INSEE:</strong> ${props.codeinsee}</p>`;
-                if (props.niv1_2022) popupContent += `<p><strong>Niveau 1:</strong> ${props.niv1_2022}</p>`;
-                if (props.lib1_2022) popupContent += `<p><strong>Lib1:</strong> ${props.lib1_2022}</p>`;
                 
                 // Infos parcelles (de la jointure spatiale)
                 if (props.siren) popupContent += `<p><strong>SIREN:</strong> ${props.siren}</p>`;
@@ -172,6 +264,201 @@
                 popupContent += '</div>';
                 layer.bindPopup(popupContent);
             }
+        }
+
+        // Fonction pour construire les filtres dynamiquement
+        function buildFilters() {
+            // Mapping des niveaux vers leurs labels
+            const niv1Labels = {};
+            const niv2Labels = {};
+            const mapping = {}; // niv1 -> Set of niv2
+
+            // Collecter les valeurs uniques et leurs labels et construire la map niv1->niv2
+            allFeatures.forEach(feat => {
+                const props = feat.properties || {};
+                const niv1 = props.niv1_2022 ? String(props.niv1_2022) : null;
+                const niv2 = props.niv2_2022 ? String(props.niv2_2022) : null;
+
+                if (niv1) {
+                    uniqueNiv1.add(niv1);
+                    if (props.lib1_2022) niv1Labels[niv1] = props.lib1_2022;
+                }
+                if (niv2) {
+                    uniqueNiv2.add(niv2);
+                    if (props.lib2_2022) niv2Labels[niv2] = props.lib2_2022;
+                }
+
+                if (niv1 && niv2) {
+                    if (!mapping[niv1]) mapping[niv1] = new Set();
+                    mapping[niv1].add(niv2);
+                }
+            });
+
+            // Construire les groupes niv1 avec leurs niv2 correspondants
+            const niv1Container = document.getElementById('niv1Filters');
+            Array.from(uniqueNiv1).sort().forEach(val => {
+                const group = document.createElement('div');
+                group.className = 'filter-group';
+
+                const item = document.createElement('label');
+                item.className = 'checkbox-item';
+                const label = niv1Labels[val] || `Niveau ${val}`;
+                item.innerHTML = `<input type="checkbox" class="niv1" value="${val}"> ${label}`;
+                group.appendChild(item);
+
+                // Container pour les niv2 sous ce niv1
+                const niv2Box = document.createElement('div');
+                niv2Box.className = 'niv2-container';
+                const niv2set = mapping[val] ? Array.from(mapping[val]).sort() : [];
+                niv2set.forEach(n2 => {
+                    const sub = document.createElement('label');
+                    sub.className = 'checkbox-item';
+                    const subLabel = niv2Labels[n2] || `Niveau ${n2}`;
+                    sub.innerHTML = `<input type="checkbox" class="niv2" value="${n2}"> ${subLabel}`;
+                    niv2Box.appendChild(sub);
+                });
+
+                group.appendChild(niv2Box);
+                niv1Container.appendChild(group);
+
+                // Events: quand niv1 est coché/décoché
+                const cb = item.querySelector('input.niv1');
+                if (cb) {
+                    cb.addEventListener('change', (e) => {
+                        const checked = e.target.checked;
+                        niv2Box.style.display = checked ? '' : 'none';
+                        if (checked) {
+                            // Cocher tous les enfants niv2
+                            niv2Box.querySelectorAll('input.niv2').forEach(i => i.checked = true);
+                        } else {
+                            // Décocher tous les enfants niv2
+                            niv2Box.querySelectorAll('input.niv2').forEach(i => i.checked = false);
+                        }
+                        applyFilters();
+                    });
+                }
+
+                // Événements sur chaque niv2
+                niv2Box.querySelectorAll('input.niv2').forEach(i => i.addEventListener('change', applyFilters));
+            });
+
+            // Masquer tous les containers niv2 par défaut
+            document.querySelectorAll('.niv2-container').forEach(el => el.style.display = 'none');
+        }
+
+        // Remplir la liste des communes à partir des features
+        function populateCommunes() {
+            const select = document.getElementById('communeSelect');
+            const communes = new Set();
+            allFeatures.forEach(f => {
+                const n = f.properties && (f.properties.nom || f.properties._infos_commune && f.properties._infos_commune.nom_commune);
+                if (n) communes.add(String(n));
+            });
+            Array.from(communes).sort().forEach(c => {
+                const opt = document.createElement('option');
+                opt.value = c;
+                opt.textContent = c;
+                select.appendChild(opt);
+            });
+            select.addEventListener('change', (e) => {
+                selectedCommune = e.target.value || 'all';
+                applyFilters();
+            });
+        }
+
+        // Fonction pour appliquer les filtres
+        function applyFilters() {
+            // Map parent->enfants cochés pour gérer les exclusions niv2
+            const parentMap = {};
+            const groups = document.querySelectorAll('#niv1Filters .filter-group');
+            groups.forEach(g => {
+                const p = g.querySelector('input.niv1');
+                if (!p) return;
+                const pval = p.value;
+                const checkedChildren = Array.from(g.querySelectorAll('input.niv2:checked')).map(i => i.value);
+                parentMap[pval] = checkedChildren;
+            });
+
+            const selectedNiv1 = Object.keys(parentMap).filter(k => {
+                const p = document.querySelector(`#niv1Filters input.niv1[value="${k}"]`);
+                return p && p.checked;
+            });
+
+            // Si rien n'est sélectionné, n'afficher aucun terrain
+            const anyChecked = selectedNiv1.length > 0 || Object.values(parentMap).some(arr => arr.length > 0);
+            if (!anyChecked) {
+                if (currentLayer) {
+                    map.removeLayer(currentLayer);
+                    currentLayer = null;
+                }
+                document.getElementById('visible-count').innerHTML =
+                    `<strong>0</strong> / ${allFeatures.length} terrains affichés`;
+                return;
+            }
+
+            // Filtrer les features en respectant les niv2 décochées
+            const filteredFeatures = allFeatures.filter(feat => {
+                const props = feat.properties || {};
+                const fN1 = String(props.niv1_2022);
+                const fN2 = String(props.niv2_2022);
+                const commune = props.nom || (props._infos_commune && props._infos_commune.nom_commune) || null;
+
+                // Filtre par commune si une commune est sélectionnée
+                if (selectedCommune && selectedCommune !== 'all') {
+                    if (!commune || String(commune) !== String(selectedCommune)) return false;
+                }
+
+                // Si parent (niv1) sélectionné
+                if (selectedNiv1.includes(fN1)) {
+                    const checkedChildren = parentMap[fN1] || [];
+                    if (checkedChildren.length > 0) {
+                        // Inclure seulement si niv2 est cochée
+                        return checkedChildren.includes(fN2);
+                    }
+                    // Aucun enfant coché => inclure tout le parent
+                    return true;
+                }
+
+                // Sinon, inclure si niv2 cochée sous n'importe quel parent
+                return Object.values(parentMap).some(arr => arr.includes(fN2));
+            });
+
+            // Supprimer l'ancienne couche et ajouter la nouvelle
+            if (currentLayer) {
+                map.removeLayer(currentLayer);
+            }
+
+            currentLayer = L.geoJSON({
+                type: 'FeatureCollection',
+                features: filteredFeatures
+            }, {
+                style: getFeatureStyle,
+                onEachFeature: onEachFeature
+            }).addTo(map);
+
+            if (filteredFeatures.length > 0) {
+                try {
+                    map.fitBounds(currentLayer.getBounds());
+                } catch (e) {
+                    // Ignorer si bounds indéfinies
+                }
+            }
+
+            // Mise à jour du compteur
+            document.getElementById('visible-count').innerHTML = 
+                `<strong>${filteredFeatures.length}</strong> / ${allFeatures.length} terrains affichés`;
+        }
+
+        // Sélectionner tous les filtres
+        function selectAll() {
+            document.querySelectorAll('.filter-panel input[type="checkbox"]').forEach(el => el.checked = true);
+            applyFilters();
+        }
+
+        // Désélectionner tous les filtres
+        function deselectAll() {
+            document.querySelectorAll('.filter-panel input[type="checkbox"]').forEach(el => el.checked = false);
+            applyFilters();
         }
 
         // Charger le GeoJSON
@@ -185,22 +472,25 @@
             .then(data => {
                 // Masquer le message de chargement
                 document.getElementById('loading').style.display = 'none';
-                
-                // Ajouter la couche GeoJSON
-                const geojsonLayer = L.geoJSON(data, {
-                    style: getFeatureStyle,
-                    onEachFeature: onEachFeature
-                }).addTo(map);
-                
-                // Ajuster la vue sur les données
-                if (data.features && data.features.length > 0) {
-                    map.fitBounds(geojsonLayer.getBounds());
-                    document.getElementById('feature-count').innerHTML = 
-                        `<strong>${data.features.length}</strong> terrains affichés`;
-                } else {
-                    document.getElementById('feature-count').innerHTML = 
-                        '<strong>Aucun terrain</strong> trouvé';
+
+                // Stocker les features
+                allFeatures = data.features || [];
+
+                // Construire les filtres et remplir les communes
+                buildFilters();
+                populateCommunes();
+
+                // Rien d'affiché par défaut
+                if (currentLayer) {
+                    try { map.removeLayer(currentLayer); } catch (e) {}
+                    currentLayer = null;
                 }
+
+                // Mise à jour des compteurs
+                document.getElementById('feature-count').innerHTML = 
+                    `<strong>${allFeatures.length}</strong> terrains chargés`;
+                document.getElementById('visible-count').innerHTML =
+                    `<strong>0</strong> / ${allFeatures.length} terrains affichés`;
             })
             .catch(error => {
                 console.error('Erreur lors du chargement:', error);

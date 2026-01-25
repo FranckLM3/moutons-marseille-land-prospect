@@ -2,3 +2,5 @@ menv/*
 data/*
 
 *.geojson
+*.mbtiles
+scripts/*.sh

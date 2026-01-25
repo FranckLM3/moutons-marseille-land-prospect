@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Carte Moutons Marseillais - MOS 2022 Filtré</title>
+    
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+          crossorigin=""/>
+    
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        #map {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 100%;
+            height: 100%;
+        }
+        .info-panel {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: white;
+            padding: 15px;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+            z-index: 1000;
+            max-width: 300px;
+        }
+        .info-panel h3 {
+            margin: 0 0 10px 0;
+            font-size: 16px;
+        }
+        .info-panel p {
+            margin: 5px 0;
+            font-size: 13px;
+        }
+        .legend {
+            position: absolute;
+            bottom: 30px;
+            right: 10px;
+            background: white;
+            padding: 10px;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+            z-index: 1000;
+            font-size: 12px;
+        }
+        .legend h4 {
+            margin: 0 0 8px 0;
+            font-size: 14px;
+        }
+        .legend-item {
+            margin: 4px 0;
+        }
+        .legend-color {
+            display: inline-block;
+            width: 20px;
+            height: 12px;
+            margin-right: 5px;
+            border: 1px solid #999;
+        }
+        .loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            padding: 20px;
+            border-radius: 5px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+            z-index: 2000;
+            font-size: 16px;
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    <div class="loading" id="loading">Chargement des données...</div>
+    
+    <div class="info-panel" id="info">
+        <h3>🐑 Moutons Marseillais</h3>
+        <p><strong>Projet:</strong> Prospection terrains Marseille</p>
+        <p><strong>Données:</strong> MOS 2022 filtrées</p>
+        <p id="feature-count">Chargement...</p>
+    </div>
+
+    <div class="legend">
+        <h4>Légende (niv1_2022)</h4>
+        <div class="legend-item">
+            <span class="legend-color" style="background: #f1c40f;"></span>
+            Niveau 2 (Jaune)
+        </div>
+        <div class="legend-item">
+            <span class="legend-color" style="background: #2ecc71;"></span>
+            Niveau 3 (Vert)
+        </div>
+        <div class="legend-item">
+            <span class="legend-color" style="background: #9b59b6;"></span>
+            Autres niveaux (Violet)
+        </div>
+    </div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+            integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+            crossorigin=""></script>
+
+    <script>
+        // Initialiser la carte centrée sur Marseille
+        const map = L.map('map').setView([43.2965, 5.3698], 12);
+
+        // Ajouter le fond de carte OpenStreetMap
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+            maxZoom: 19
+        }).addTo(map);
+
+        // Fonction pour définir le style des features selon niv1_2022
+        function getFeatureStyle(feature) {
+            const niv1 = feature.properties ? feature.properties.niv1_2022 : null;
+            let fillColor = '#9b59b6'; // violet par défaut
+            let strokeColor = '#8e44ad';
+            
+            // 2 = jaune, 3 = vert, autres = violet
+            if (niv1 == 2 || niv1 == '2') {
+                fillColor = '#f1c40f';  // jaune
+                strokeColor = '#f39c12';
+            } else if (niv1 == 3 || niv1 == '3') {
+                fillColor = '#2ecc71';  // vert
+                strokeColor = '#27ae60';
+            } else {
+                fillColor = '#9b59b6';  // violet
+                strokeColor = '#8e44ad';
+            }
+            
+            return {
+                fillColor: fillColor,
+                weight: 2,
+                opacity: 1,
+                color: strokeColor,
+                fillOpacity: 0.6
+            };
+        }
+
+        // Fonction pour créer les popups
+        function onEachFeature(feature, layer) {
+            if (feature.properties) {
+                const props = feature.properties;
+                let popupContent = '<div style="max-width: 250px;">';
+                popupContent += '<h4 style="margin: 0 0 10px 0;">📍 Terrain</h4>';
+                
+                if (props.lib3_2022) popupContent += `<p><strong>Type:</strong> ${props.lib3_2022}</p>`;
+                if (props.area_ha) popupContent += `<p><strong>Surface:</strong> ${props.area_ha.toFixed(2)} ha</p>`;
+                if (props.area_m2) popupContent += `<p><strong>Surface:</strong> ${props.area_m2.toFixed(0)} m²</p>`;
+                if (props.nom) popupContent += `<p><strong>Commune:</strong> ${props.nom}</p>`;
+                if (props.codeinsee) popupContent += `<p><strong>Code INSEE:</strong> ${props.codeinsee}</p>`;
+                if (props.niv1_2022) popupContent += `<p><strong>Niveau 1:</strong> ${props.niv1_2022}</p>`;
+                if (props.lib1_2022) popupContent += `<p><strong>Lib1:</strong> ${props.lib1_2022}</p>`;
+                
+                // Infos parcelles (de la jointure spatiale)
+                if (props.siren) popupContent += `<p><strong>SIREN:</strong> ${props.siren}</p>`;
+                if (props.denomination) popupContent += `<p><strong>Propriétaire:</strong> ${props.denomination}</p>`;
+                
+                popupContent += '</div>';
+                layer.bindPopup(popupContent);
+            }
+        }
+
+        // Charger le GeoJSON
+        fetch('mos_2022_occsol_filtered.geojson')
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Fichier GeoJSON introuvable');
+                }
+                return response.json();
+            })
+            .then(data => {
+                // Masquer le message de chargement
+                document.getElementById('loading').style.display = 'none';
+                
+                // Ajouter la couche GeoJSON
+                const geojsonLayer = L.geoJSON(data, {
+                    style: getFeatureStyle,
+                    onEachFeature: onEachFeature
+                }).addTo(map);
+                
+                // Ajuster la vue sur les données
+                if (data.features && data.features.length > 0) {
+                    map.fitBounds(geojsonLayer.getBounds());
+                    document.getElementById('feature-count').innerHTML = 
+                        `<strong>${data.features.length}</strong> terrains affichés`;
+                } else {
+                    document.getElementById('feature-count').innerHTML = 
+                        '<strong>Aucun terrain</strong> trouvé';
+                }
+            })
+            .catch(error => {
+                console.error('Erreur lors du chargement:', error);
+                document.getElementById('loading').innerHTML = 
+                    `⚠️ Erreur: ${error.message}<br><small>Vérifiez que le fichier mos_2022_occsol_filtered.geojson existe</small>`;
+            });
+
+        // Contrôle d'échelle
+        L.control.scale({
+            metric: true,
+            imperial: false,
+            position: 'bottomleft'
+        }).addTo(map);
+    </script>
+</body>
+</html>

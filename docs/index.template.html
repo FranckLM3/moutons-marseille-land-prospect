@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Moutons Marseillais — Carte des terrains pâturables</title>
+  <meta name="description" content="Carte interactive des zones pâturables de la métropole Aix-Marseille-Provence — Projet Moutons Marseillais" />
+
+  <!-- Leaflet -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+  <link rel="stylesheet" href="app.css" />
+</head>
+<body>
+
+<div id="loading">
+  <div class="sheep">🐑</div>
+  <p>Chargement des terrains…</p>
+</div>
+
+<div id="map"></div>
+
+<!-- Sidebar gauche -->
+<div id="sidebar">
+
+  <!-- Onglets -->
+  <div id="sidebar-tabs">
+    <div class="sidebar-tab active" data-tab="filters" onclick="switchTab('filters')">🎛️ Filtres</div>
+    <div class="sidebar-tab"        data-tab="route"   onclick="switchTab('route')">🗺️ Itinéraire</div>
+  </div>
+
+  <div id="sidebar-scroll">
+
+    <!-- ══ ONGLET FILTRES ══ -->
+    <div class="sidebar-pane active" id="pane-filters">
+
+      <!-- En-tête projet -->
+      <div class="sidebar-section" style="text-align:center;padding:8px 0 4px">
+        <div style="font-size:24px">🐑</div>
+        <div style="font-size:14px;font-weight:700;color:#fff;margin-top:4px">Moutons Marseillais</div>
+        <div style="font-size:10px;color:#555;margin-bottom:6px">Prospection terrains AMP</div>
+        <div style="display:flex;justify-content:space-around">
+          <div class="stat">
+            <div class="value" id="count-total">—</div>
+            <div class="label">total</div>
+          </div>
+          <div class="stat">
+            <div class="value" id="count-visible">—</div>
+            <div class="label">filtrées</div>
+          </div>
+          <div class="stat">
+            <div class="value" id="stat-ha" style="font-size:14px">—</div>
+            <div class="label">ha pât.</div>
+          </div>
+        </div>
+      </div>
+
+      <hr class="sidebar-divider" />
+
+      <!-- Filtres -->
+      <div class="sidebar-section">
+        <h2>Filtres</h2>
+
+        <div class="filter-section">
+          <label>Surface pâturable min.</label>
+          <div class="slider-row">
+            <input type="range" id="area-slider" min="0" max="20000" value="0" step="500" />
+            <span id="area-value">0 m²</span>
+          </div>
+        </div>
+
+        <div class="filter-section">
+          <label>Communes</label>
+          <div style="display:flex;gap:4px;margin-bottom:5px">
+            <button class="btn btn-ghost" style="font-size:10px;padding:3px 8px" onclick="selectAllCommunes()">Toutes</button>
+            <button class="btn btn-ghost" style="font-size:10px;padding:3px 8px" onclick="deselectAllCommunes()">Aucune</button>
+          </div>
+          <div class="commune-search-wrap">
+            <input type="text" id="commune-search" placeholder="Rechercher une commune…" oninput="filterCommuneChips(this.value)" />
+          </div>
+          <div id="commune-chips"></div>
+        </div>
+
+        <div class="btn-row">
+          <button class="btn btn-primary" onclick="resetFilters()">Réinitialiser</button>
+        </div>
+        <div class="btn-row" style="margin-top:6px">
+          <button class="btn btn-primary" onclick="exportExcel()" style="background:#60a5fa;color:#111">⬇ Export CSV</button>
+        </div>
+      </div>
+
+      <hr class="sidebar-divider" />
+
+      <!-- Légende -->
+      <div class="sidebar-section">
+        <h2>🌱 % Prairies</h2>
+        <div class="legend-gradient-bar"></div>
+        <div class="legend-gradient-labels"><span>0 %</span><span>40 %</span><span>100 %</span></div>
+      </div>
+
+    </div><!-- /pane-filters -->
+
+    <!-- ══ ONGLET ITINÉRAIRE ══ -->
+    <div class="sidebar-pane" id="pane-route">
+
+      <div class="sidebar-section" style="padding-top:8px">
+
+        <hr class="sidebar-divider" style="margin-top:0" />
+        <h2>Départ / Arrivée</h2>
+
+        <label class="filter-section" style="display:block">
+          <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#60a5fa;display:block;margin-bottom:4px">📍 Point A — Départ</span>
+          <input class="route-input" id="route-start" placeholder="Ex : 13 rue de la Paix, Marseille" />
+          <div class="route-status" id="status-start"></div>
+        </label>
+
+        <label class="filter-section" style="display:block">
+          <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#f87171;display:block;margin-bottom:4px">🏁 Point B — Arrivée</span>
+          <input class="route-input" id="route-end" placeholder="Ex : Col de la Gineste, Marseille" />
+          <div class="route-status" id="status-end"></div>
+        </label>
+
+        <hr class="sidebar-divider" />
+        <h2>Critères des parcelles</h2>
+
+        <div class="filter-section">
+          <label>% prairie min. <span id="rte-pct-val" style="color:#4ade80">20 %</span></label>
+          <div class="slider-row">
+            <input type="range" id="rte-pct" min="0" max="100" value="20" step="5"
+              oninput="document.getElementById('rte-pct-val').textContent=this.value+' %'" />
+          </div>
+        </div>
+
+        <div class="filter-section">
+          <label>Surface pâturable min. <span id="rte-area-val" style="color:#4ade80">2 000 m²</span></label>
+          <div class="slider-row">
+            <input type="range" id="rte-area" min="0" max="20000" value="2000" step="500"
+              oninput="document.getElementById('rte-area-val').textContent=Number(this.value).toLocaleString('fr')+' m²'" />
+          </div>
+        </div>
+
+        <div class="filter-section">
+        <div class="filter-section">
+          <label>Nb max de parcelles <span id="rte-nb-val" style="color:#4ade80">3</span></label>
+          <div class="slider-row">
+            <input type="range" id="rte-nb" min="1" max="10" value="3" step="1"
+              oninput="document.getElementById('rte-nb-val').textContent=this.value" />
+          </div>
+        </div>
+
+        <div class="filter-section">
+          <label>Rayon autour du trajet <span id="rte-radius-val" style="color:#4ade80">10 km</span></label>
+          <div class="slider-row">
+            <input type="range" id="rte-radius" min="1" max="50" value="10" step="1"
+              oninput="document.getElementById('rte-radius-val').textContent=this.value+' km'" />
+          </div>
+        </div>
+
+        <div class="btn-row" style="margin-top:8px">
+          <button class="btn btn-primary" onclick="computeRoute()" id="btn-route">🐑 Calculer</button>
+          <button class="btn btn-ghost"   onclick="clearRoute()">Effacer</button>
+        </div>
+
+        <div class="route-status" id="status-route" style="margin-top:8px"></div>
+        <div id="route-result"></div>
+      </div>
+
+    </div><!-- /pane-route -->
+
+  </div><!-- /sidebar-scroll -->
+</div>
+
+<!-- Info stats (conservé pour compat JS) -->
+<div class="panel" id="info-panel" style="display:none">
+  <div class="stat">
+    <div class="value" id="stat-pct">—</div>
+    <div class="label">avec proprio.</div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script src="app.js"></script>
+</body>
+</html>

@@ -364,7 +364,7 @@ async function computeRoute() {
     // 4. Appel OpenRouteService foot-hiking (suit sentiers et chemins ruraux)
     setRouteStatus('Calcul de l\'itinéraire…', '');
     const waypoints = [ptA, ...orderedParcelles.map(p => p.center), ptB];
-    const orsKey = '__ORS_KEY__';
+    const orsKey = window.ORS_API_KEY || '';
     const orsRes = await fetch('https://api.openrouteservice.org/v2/directions/foot-hiking/geojson', {
       method: 'POST',
       headers: {

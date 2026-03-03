@@ -32,11 +32,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from src.cadastre import add_prairie_ratio, join_owners_to_cadastre, load_cadastre
-from src.export import export_geojson, prepare_for_export
-from src.filters import add_area_columns, filter_by_area
-from src.land_cover import filter_pasture_zones, load_ocsge
-from src.owners import load_owners
+# Les imports géospatiaux sont chargés uniquement quand le pipeline complet est exécuté
+# (pas en mode --inject-only, pour éviter de dépendre de geopandas en CI légère)
 
 # ---------------------------------------------------------------------------
 # Chemins par défaut
@@ -81,6 +78,13 @@ def parse_args() -> argparse.Namespace:
 # Pipeline principal
 # ---------------------------------------------------------------------------
 def run(args: argparse.Namespace) -> None:
+    # Imports géospatiaux chargés ici uniquement (pas nécessaires en --inject-only)
+    from src.cadastre import add_prairie_ratio, join_owners_to_cadastre, load_cadastre
+    from src.export import export_geojson, prepare_for_export
+    from src.filters import add_area_columns, filter_by_area
+    from src.land_cover import filter_pasture_zones, load_ocsge
+    from src.owners import load_owners
+
     t0 = time.time()
 
     print("\n🐑 Moutons Marseille — Land Prospect")

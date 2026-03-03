@@ -114,6 +114,12 @@
           <div class="route-status" id="status-start"></div>
         </label>
 
+        <div id="waypoints-list"></div>
+
+        <div style="margin-bottom:8px">
+          <button class="btn btn-ghost" onclick="addWaypointField()" style="width:100%;font-size:11px;padding:5px">＋ Ajouter une étape fixe</button>
+        </div>
+
         <label class="filter-section" style="display:block">
           <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#f87171;display:block;margin-bottom:4px">🏁 Point B — Arrivée</span>
           <input class="route-input" id="route-end" placeholder="Ex : Col de la Gineste, Marseille" />
@@ -124,14 +130,6 @@
         <h2>Critères des parcelles</h2>
 
         <div class="filter-section">
-          <label>% prairie min. <span id="rte-pct-val" style="color:#4ade80">20 %</span></label>
-          <div class="slider-row">
-            <input type="range" id="rte-pct" min="0" max="100" value="20" step="5"
-              oninput="document.getElementById('rte-pct-val').textContent=this.value+' %'" />
-          </div>
-        </div>
-
-        <div class="filter-section">
           <label>Surface pâturable min. <span id="rte-area-val" style="color:#4ade80">2 000 m²</span></label>
           <div class="slider-row">
             <input type="range" id="rte-area" min="0" max="20000" value="2000" step="500"
@@ -140,18 +138,9 @@
         </div>
 
         <div class="filter-section">
-        <div class="filter-section">
-          <label>Nb max de parcelles <span id="rte-nb-val" style="color:#4ade80">3</span></label>
+          <label>Rayon autour du trajet <span id="rte-radius-val" style="color:#4ade80">2 km</span></label>
           <div class="slider-row">
-            <input type="range" id="rte-nb" min="1" max="10" value="3" step="1"
-              oninput="document.getElementById('rte-nb-val').textContent=this.value" />
-          </div>
-        </div>
-
-        <div class="filter-section">
-          <label>Rayon autour du trajet <span id="rte-radius-val" style="color:#4ade80">10 km</span></label>
-          <div class="slider-row">
-            <input type="range" id="rte-radius" min="1" max="50" value="10" step="1"
+            <input type="range" id="rte-radius" min="1" max="5" value="2" step="1"
               oninput="document.getElementById('rte-radius-val').textContent=this.value+' km'" />
           </div>
         </div>

@@ -247,10 +247,15 @@ function switchTab(tab) {
 }
 
 // ── Itinéraire ────────────────────────────────────────────────────────────
-let routeLayer       = null;
+let routeLayer        = null;
 let routeParcelsLayer = null;
-let routeMarkers     = [];
-let geocodeCache = {};
+let routeMarkers      = [];
+let geocodeCache      = {};
+let lastPtA           = null;
+let lastPtB           = null;
+let selectedParcels   = [];   // [{feature, center, id}] — ajoutées par clic
+let candidateParcels  = [];   // toutes les parcelles candidates visibles
+let _wpCount          = 0;    // compteur IDs champs étapes
 
 async function geocode(address) {
   if (geocodeCache[address]) return geocodeCache[address];
@@ -263,7 +268,6 @@ async function geocode(address) {
   return result;
 }
 
-// Distance haversine en km entre deux points {lat, lng}
 function haversine(a, b) {
   const R = 6371;
   const dLat = (b.lat - a.lat) * Math.PI / 180;
@@ -272,7 +276,6 @@ function haversine(a, b) {
   return R * 2 * Math.atan2(Math.sqrt(s), Math.sqrt(1-s));
 }
 
-// Distance d'un point P au segment AB (en km)
 function distToSegment(p, a, b) {
   const dx = b.lng - a.lng, dy = b.lat - a.lat;
   if (dx === 0 && dy === 0) return haversine(p, a);
@@ -280,21 +283,12 @@ function distToSegment(p, a, b) {
   return haversine(p, { lat: a.lat + t*dy, lng: a.lng + t*dx });
 }
 
-// Projette un point sur le segment A→B et retourne sa progression (0=A, 1=B)
 function projectionOnSegment(p, a, b) {
   const dx = b.lng - a.lng, dy = b.lat - a.lat;
   if (dx === 0 && dy === 0) return 0;
   return Math.max(0, Math.min(1, ((p.lng - a.lng)*dx + (p.lat - a.lat)*dy) / (dx*dx + dy*dy)));
 }
 
-// Score qualité d'une parcelle : favorise % prairie élevé et grande surface
-function qualityScore(props) {
-  const pct  = props.pct_prairie || 0;
-  const area = props.prairie_m2  || 1;
-  return pct * Math.log1p(area);
-}
-
-// Centroïde d'une feature GeoJSON
 function centroid(feature) {
   try {
     const b = L.geoJSON(feature).getBounds().getCenter();
@@ -302,68 +296,82 @@ function centroid(feature) {
   } catch(_) { return null; }
 }
 
-// Ordonne les parcelles dans l'ordre naturel A→B (par projection sur le segment)
 function orderAlongRoute(ptA, ptB, parcelles) {
   return [...parcelles].sort((a, b) =>
     projectionOnSegment(a.center, ptA, ptB) - projectionOnSegment(b.center, ptA, ptB)
   );
 }
 
-async function computeRoute() {
+function _clearRouteLayers() {
+  if (routeLayer)        { map.removeLayer(routeLayer);        routeLayer = null; }
+  if (routeParcelsLayer) { map.removeLayer(routeParcelsLayer); routeParcelsLayer = null; }
+  map.eachLayer(l => { if (l._routeSelected) map.removeLayer(l); });
+  routeMarkers.forEach(m => map.removeLayer(m));
+  routeMarkers = [];
+}
+
+async function computeRoute(keepSelected = false) {
   const startAddr = document.getElementById('route-start').value.trim();
   const endAddr   = document.getElementById('route-end').value.trim();
   if (!startAddr || !endAddr) {
     setRouteStatus('Renseignez le départ et l\'arrivée.', 'err'); return;
   }
 
+  if (!keepSelected) selectedParcels = [];
+
   const btn = document.getElementById('btn-route');
   btn.disabled = true; btn.textContent = '⏳ Calcul…';
   setRouteStatus('Géocodage des adresses…', '');
 
   try {
-    // 1. Géocodage
+    // 1. Géocodage A, étapes fixes, B
     const [ptA, ptB] = await Promise.all([
       geocode(startAddr).then(r => { document.getElementById('status-start').className='route-status ok'; document.getElementById('status-start').textContent='✓ '+r.label.split(',')[0]; return r; }),
       geocode(endAddr).then(r   => { document.getElementById('status-end').className='route-status ok';   document.getElementById('status-end').textContent='✓ '+r.label.split(',')[0];   return r; }),
     ]);
 
-    // 2. Filtrer + scorer les parcelles
-    setRouteStatus('Sélection des parcelles…', '');
-    const minPct    = parseInt(document.getElementById('rte-pct').value);
-    const minArea   = parseInt(document.getElementById('rte-area').value);
-    const maxNb     = parseInt(document.getElementById('rte-nb').value);
-    const radiusKm  = parseInt(document.getElementById('rte-radius').value);
+    const wpInputs = [...document.querySelectorAll('.waypoint-input')];
+    const fixedWaypoints = [];
+    for (const inp of wpInputs) {
+      const addr = inp.value.trim();
+      const statusEl = inp.nextElementSibling;
+      if (!addr) continue;
+      try {
+        const r = await geocode(addr);
+        statusEl.className = 'route-status ok';
+        statusEl.textContent = '✓ ' + r.label.split(',')[0];
+        fixedWaypoints.push(r);
+      } catch(e) {
+        statusEl.className = 'route-status err';
+        statusEl.textContent = '✗ Adresse introuvable';
+      }
+    }
 
-    const candidates = allFeatures
+    lastPtA = ptA; lastPtB = ptB;
+
+    // 2. Parcelles candidates dans le périmètre
+    const minArea  = parseInt(document.getElementById('rte-area').value);
+    const radiusKm = parseInt(document.getElementById('rte-radius').value);
+    const selectedIds = new Set(selectedParcels.map(p => p.id));
+
+    candidateParcels = allFeatures
       .filter(f => {
         const p = f.properties || {};
-        if ((p.pct_prairie || 0) < minPct)  return false;
-        if ((p.prairie_m2  || 0) < minArea) return false;
+        if ((p.prairie_m2 || 0) < minArea) return false;
+        if (selectedIds.has(p.id || '')) return false;
         const c = centroid(f);
         if (!c) return false;
-        // Filtre couloir autour du segment A→B
         if (distToSegment(c, ptA, ptB) > radiusKm) return false;
         return true;
       })
-      .map(f => ({ feature: f, center: centroid(f), score: qualityScore(f.properties || {}) }));
+      .map(f => ({ feature: f, center: centroid(f), id: f.properties?.id || '' }));
 
-    if (!candidates.length) {
-      setRouteStatus('Aucune parcelle trouvée avec ces critères.', 'err');
-      btn.disabled = false; btn.textContent = '🐑 Calculer'; return;
-    }
+    // 3. Waypoints : A → étapes fixes → parcelles sélectionnées ordonnées → B
+    const orderedSelected = orderAlongRoute(ptA, ptB, selectedParcels);
+    const waypoints = [ptA, ...fixedWaypoints, ...orderedSelected.map(p => p.center), ptB];
 
-    // 3. Garder les N meilleures par score qualité, puis les ordonner A→B
-    setRouteStatus(`${candidates.length} parcelles candidates, optimisation…`, '');
-    const top = candidates
-      .sort((a, b) => b.score - a.score)   // meilleures d'abord
-      .slice(0, maxNb);
-
-    // Ordonner dans le sens A→B (par projection sur le segment direct)
-    const orderedParcelles = orderAlongRoute(ptA, ptB, top);
-
-    // 4. Appel OpenRouteService foot-hiking (suit sentiers et chemins ruraux)
+    // 4. Appel ORS foot-hiking
     setRouteStatus('Calcul de l\'itinéraire…', '');
-    const waypoints = [ptA, ...orderedParcelles.map(p => p.center), ptB];
     const orsKey = window.ORS_API_KEY || '';
     const orsRes = await fetch('https://api.openrouteservice.org/v2/directions/foot-hiking/geojson', {
       method: 'POST',
@@ -383,79 +391,106 @@ async function computeRoute() {
     const durH   = Math.floor(durMin / 60);
     const durStr = durH > 0 ? `${durH}h${String(durMin % 60).padStart(2,'0')}` : `${durMin} min`;
 
-    // 5. Afficher sur la carte — masquer les autres parcelles, montrer uniquement les retenues
-    clearRoute();
-
-    // Masquer la couche principale
+    // 5. Affichage carte
+    _clearRouteLayers();
     if (currentLayer) map.removeLayer(currentLayer);
 
-    // Couche des parcelles retenues (surbrillance)
-    const selectedFeatures = orderedParcelles.map(p => p.feature);
     routeLayer = L.geoJSON(routeGeojson, {
       style: { color: '#4ade80', weight: 4, opacity: 0.85, dashArray: '8 4' }
     }).addTo(map);
 
+    // Parcelles candidates en orange — cliquables pour ajouter
     routeParcelsLayer = L.geoJSON(
-      { type: 'FeatureCollection', features: selectedFeatures },
+      { type: 'FeatureCollection', features: candidateParcels.map(p => p.feature) },
       {
-        style: feature => {
-          const color = colorForPrairie(feature.properties?.pct_prairie);
-          return { fillColor: color, fillOpacity: 0.7, color: '#fff', weight: 2, opacity: 0.9 };
-        },
+        style: { fillColor: '#fb923c', fillOpacity: 0.45, color: '#fb923c', weight: 1.5, opacity: 0.8 },
         onEachFeature: (feature, layer) => {
-          layer.bindPopup(() => buildPopup(feature), { maxWidth: 300, minWidth: 260 });
-          layer.on('mouseover', function() { this.setStyle({ fillOpacity: 0.9, weight: 3 }); });
+          const fid = feature.properties?.id || '';
+          layer.bindTooltip('➕ Cliquer pour ajouter à l\'itinéraire', { sticky: true, className: 'route-tooltip' });
+          layer.on('click', () => addParcelToRoute(fid));
+          layer.on('mouseover', function() { this.setStyle({ fillOpacity: 0.75, weight: 2.5 }); });
           layer.on('mouseout',  function() { routeParcelsLayer && routeParcelsLayer.resetStyle(this); });
         },
       }
     ).addTo(map);
 
-    // Marqueurs départ/arrivée
+    // Parcelles sélectionnées en vert
+    if (orderedSelected.length) {
+      const selLayer = L.geoJSON(
+        { type: 'FeatureCollection', features: orderedSelected.map(p => p.feature) },
+        {
+          style: { fillColor: '#4ade80', fillOpacity: 0.7, color: '#fff', weight: 2, opacity: 0.9 },
+          onEachFeature: (feature, layer) => {
+            layer._routeSelected = true;
+            layer.bindPopup(() => buildPopup(feature), { maxWidth: 300, minWidth: 260 });
+            layer.on('mouseover', function() { this.setStyle({ fillOpacity: 0.9, weight: 3 }); });
+          },
+        }
+      ).addTo(map);
+      selLayer.eachLayer(l => { l._routeSelected = true; });
+    }
+
+    // Marqueurs
     const iconFor = (color, label) => L.divIcon({
       html: `<div style="background:${color};color:#111;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;border:2px solid rgba(255,255,255,0.5);box-shadow:0 2px 8px rgba(0,0,0,.6)">${label}</div>`,
       className: '', iconSize: [28,28], iconAnchor: [14,14]
     });
     routeMarkers.push(L.marker([ptA.lat, ptA.lng], { icon: iconFor('#60a5fa','A') }).addTo(map).bindPopup('Départ'));
-    routeMarkers.push(L.marker([ptB.lat, ptB.lng], { icon: iconFor('#f87171','B') }).addTo(map).bindPopup('Arrivée'));
-
-    orderedParcelles.forEach((p, i) => {
-      const props = p.feature.properties || {};
+    fixedWaypoints.forEach((wp, i) => {
+      routeMarkers.push(L.marker([wp.lat, wp.lng], { icon: iconFor('#a78bfa', i+1) }).addTo(map).bindPopup(wp.label.split(',')[0]));
+    });
+    orderedSelected.forEach((p, i) => {
       routeMarkers.push(
-        L.marker([p.center.lat, p.center.lng], { icon: iconFor('#4ade80', i+1) })
-          .addTo(map)
-          .bindPopup(buildPopup(p.feature), { maxWidth: 300 })
+        L.marker([p.center.lat, p.center.lng], { icon: iconFor('#4ade80', fixedWaypoints.length + i + 1) })
+          .addTo(map).bindPopup(buildPopup(p.feature), { maxWidth: 300 })
       );
     });
+    routeMarkers.push(L.marker([ptB.lat, ptB.lng], { icon: iconFor('#f87171','B') }).addTo(map).bindPopup('Arrivée'));
 
     map.fitBounds(routeLayer.getBounds(), { padding: [30, 30] });
 
-    // 6. Résumé + étapes dans la sidebar
-    const stepsHtml = orderedParcelles.map((p, i) => {
+    // 6. Résumé sidebar
+    const fixedStepsHtml = fixedWaypoints.map((wp, i) => `
+      <div class="route-step">
+        <div class="route-step-num" style="background:#a78bfa">${i+1}</div>
+        <div class="route-step-info"><div class="route-step-name">${wp.label.split(',')[0]}</div><div class="route-step-meta">Étape fixe</div></div>
+      </div>`).join('');
+
+    const stepsHtml = orderedSelected.map((p, i) => {
       const props = p.feature.properties || {};
       const name  = props.denomination || 'Parcelle sans propriétaire';
       const comm  = props.nom_commune  || '';
       const pct   = props.pct_prairie  != null ? `${props.pct_prairie}% prairie` : '';
       const area  = props.prairie_m2   != null ? `${Number(props.prairie_m2).toLocaleString('fr')} m² pât.` : '';
+      const fid   = (p.id || '').replace(/'/g, "\\'");
+      const num   = fixedWaypoints.length + i + 1;
       return `<div class="route-step" onclick="map.setView([${p.center.lat},${p.center.lng}],15)">
-        <div class="route-step-num">${i+1}</div>
+        <div class="route-step-num">${num}</div>
         <div class="route-step-info">
           <div class="route-step-name">${name}</div>
           <div class="route-step-meta">${[comm,pct,area].filter(Boolean).join(' · ')}</div>
         </div>
+        <button class="route-step-exclude" title="Retirer de l'itinéraire" onclick="event.stopPropagation();removeParcelFromRoute('${fid}')">✕</button>
       </div>`;
     }).join('');
+
+    const candidateHint = candidateParcels.length
+      ? `<div style="font-size:10px;color:#fb923c;margin:6px 0 2px;text-align:center">🟠 ${candidateParcels.length} parcelle${candidateParcels.length>1?'s':''} disponible${candidateParcels.length>1?'s':''} — cliquer sur la carte pour ajouter</div>`
+      : '';
 
     document.getElementById('route-result').innerHTML = `
       <div class="route-summary">
         <span><strong>${distKm} km</strong>distance</span>
         <span><strong>${durStr}</strong>durée est.</span>
-        <span><strong>${orderedParcelles.length}</strong>parcelles</span>
+        <span><strong>${fixedWaypoints.length + orderedSelected.length}</strong>étape${(fixedWaypoints.length+orderedSelected.length)!==1?'s':''}</span>
       </div>
+      ${candidateHint}
       <div class="route-steps">
         <div class="route-step">
           <div class="route-step-num start">A</div>
           <div class="route-step-info"><div class="route-step-name">Départ</div><div class="route-step-meta">${startAddr}</div></div>
         </div>
+        ${fixedStepsHtml}
         ${stepsHtml}
         <div class="route-step">
           <div class="route-step-num end">B</div>
@@ -463,7 +498,10 @@ async function computeRoute() {
         </div>
       </div>`;
 
-    setRouteStatus(`Itinéraire calculé — ${orderedParcelles.length} parcelles`, 'ok');
+    const msg = orderedSelected.length
+      ? `${orderedSelected.length} étape${orderedSelected.length>1?'s':''} · ${distKm} km · ${durStr}`
+      : `Itinéraire direct · ${distKm} km · ${durStr}`;
+    setRouteStatus(msg, 'ok');
 
   } catch(err) {
     setRouteStatus('Erreur : ' + err.message, 'err');
@@ -472,19 +510,51 @@ async function computeRoute() {
   }
 }
 
+function addParcelToRoute(fid) {
+  const found = candidateParcels.find(p => p.id === fid);
+  if (!found) return;
+  selectedParcels.push(found);
+  computeRoute(true);
+}
+
+function removeParcelFromRoute(fid) {
+  selectedParcels = selectedParcels.filter(p => p.id !== fid);
+  computeRoute(true);
+}
+
+function addWaypointField() {
+  _wpCount++;
+  const id = 'wp-' + _wpCount;
+  const div = document.createElement('div');
+  div.id = id;
+  div.style.cssText = 'display:flex;gap:4px;align-items:flex-start;margin-bottom:6px';
+  div.innerHTML = `
+    <div style="flex:1">
+      <input class="route-input waypoint-input" placeholder="Étape : adresse ou lieu…" style="width:100%" />
+      <div class="route-status"></div>
+    </div>
+    <button onclick="removeWaypointField('${id}')" style="background:none;border:none;color:#555;font-size:16px;cursor:pointer;padding:5px 2px;line-height:1;margin-top:1px" title="Supprimer">✕</button>`;
+  document.getElementById('waypoints-list').appendChild(div);
+}
+
+function removeWaypointField(id) {
+  const el = document.getElementById(id);
+  if (el) el.remove();
+}
+
 function clearRoute() {
-  if (routeLayer)        { map.removeLayer(routeLayer);        routeLayer = null; }
-  if (routeParcelsLayer) { map.removeLayer(routeParcelsLayer); routeParcelsLayer = null; }
-  routeMarkers.forEach(m => map.removeLayer(m));
-  routeMarkers = [];
+  _clearRouteLayers();
+  selectedParcels  = [];
+  candidateParcels = [];
+  lastPtA = null; lastPtB = null;
   document.getElementById('route-result').innerHTML = '';
   setRouteStatus('', '');
-  // Restaurer la couche normale
-  applyFilters();
+  if (currentLayer && !map.hasLayer(currentLayer)) currentLayer.addTo(map);
 }
 
 function setRouteStatus(msg, cls) {
   const el = document.getElementById('status-route');
+  if (!el) return;
   el.textContent = msg;
   el.className = 'route-status' + (cls ? ' ' + cls : '');
 }

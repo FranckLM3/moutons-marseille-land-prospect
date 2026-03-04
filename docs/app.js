@@ -7,7 +7,6 @@ const DATA_FILE    = 'pasture_zones.geojson';
 const IGN_WMTS_URL = 'https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0'
   + '&LAYER=OCSGE.COUVERTURE.2021-2023&STYLE=normal&TILEMATRIXSET=PM_6_16'
   + '&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&FORMAT=image/png';
-const IGN_OCS_LAYER = 'OCSGE.COUVERTURE.2021-2023';
 const DEFAULT_FILTER = 'Marseille'; // pré-sélectionne toutes les communes contenant ce mot
 
 // Couleur selon % pâturable (0 ou null = gris, >0 = vert clair→foncé)
@@ -41,7 +40,6 @@ let allCommunes      = [];        // liste triée complète
 let minAreaHa        = 0.5;       // surface pâturable min en ha (défaut 5 000 m²)
 let showValidatedOnly = false;    // filtre sur parcelles validées par contributeurs
 let showOwnerKnownOnly = false;   // filtre sur parcelles avec propriétaire connu
-let includeMissingPrairie = false; // inclure parcelles sans données prairie
 let ocsWmsLayer = null;
 
 // ── Avis contributeurs (localStorage) ───────────────────────────────────
@@ -424,14 +422,6 @@ if (ownerKnownOnlyEl) {
   });
 }
 
-const includeMissingPrairieEl = document.getElementById('include-missing-prairie');
-if (includeMissingPrairieEl) {
-  includeMissingPrairieEl.addEventListener('change', () => {
-    includeMissingPrairie = includeMissingPrairieEl.checked;
-    applyFilters();
-  });
-}
-
 const toggleOcsEl = document.getElementById('toggle-ocs');
 const ocsLegendList = document.getElementById('ocs-legend-list');
 if (toggleOcsEl) {
@@ -466,7 +456,7 @@ function hideOcsLayer() {
 }
 
 function hasIgnWmtsConfig() {
-  return Boolean(IGN_WMTS_URL && IGN_OCS_LAYER);
+  return Boolean(IGN_WMTS_URL);
 }
 
 function updateLegendFromWms() {
@@ -488,23 +478,14 @@ function hasKnownOwner(props) {
   return Boolean(denom) || Boolean(siren);
 }
 
-function hasPrairieData(props) {
-  if (!props) return false;
-  return props.prairie_m2 != null || props.pct_prairie != null;
-}
-
 // ── Filtrage ──────────────────────────────────────────────────────────────
 function getFiltered() {
   if (selectedCommunes.size === 0) return [];
   return allFeatures.filter(f => {
     const p = f.properties || {};
-    if (selectedCommunes.size > 0) {
-      const c = (p.nom_commune || '').trim();
-      if (!selectedCommunes.has(c)) return false;
-    }
-    const prairieKnown = hasPrairieData(p);
-    if (!prairieKnown && !includeMissingPrairie) return false;
-    if (prairieKnown && minAreaHa > 0 && (p.prairie_m2 || 0) < minAreaHa * 10000) return false;
+    const c = (p.nom_commune || '').trim();
+    if (!selectedCommunes.has(c)) return false;
+    if (minAreaHa > 0 && (p.prairie_m2 || 0) < minAreaHa * 10000) return false;
     if (showValidatedOnly) {
       const parcelId = getParcelId(f);
       if (getLocalFeedbackStatus(parcelId) !== 'yes') return false;
@@ -555,8 +536,6 @@ function resetFilters() {
   showValidatedOnly = false;
   if (ownerKnownOnlyEl) ownerKnownOnlyEl.checked = false;
   showOwnerKnownOnly = false;
-  if (includeMissingPrairieEl) includeMissingPrairieEl.checked = false;
-  includeMissingPrairie = false;
   // Réinitialise communes → Marseille
   selectedCommunes.clear();
   allCommunes.forEach(name => {
@@ -570,9 +549,8 @@ function resetFilters() {
 function buildPopup(feature) {
   const p = feature.properties || {};
   const totalM2   = p.area_m2    != null ? `${Number(p.area_m2).toLocaleString('fr')} m²` : '—';
-  const prairieKnown = hasPrairieData(p);
-  const prairieM2 = prairieKnown && p.prairie_m2 != null ? `${Number(p.prairie_m2).toLocaleString('fr')} m²` : '0 m²';
-  const pct       = prairieKnown && p.pct_prairie != null ? `${p.pct_prairie} %` : '0 %';
+  const prairieM2 = p.prairie_m2 != null ? `${Number(p.prairie_m2).toLocaleString('fr')} m²` : '0 m²';
+  const pct       = p.pct_prairie != null ? `${p.pct_prairie} %` : '0 %';
   const own       = p.denomination || '—';
   const commune   = p.nom_commune  || '—';
 

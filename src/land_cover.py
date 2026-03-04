@@ -3,22 +3,38 @@ Chargement et filtrage de l'OCS GE IGN v2.
 
 Source : https://geoservices.ign.fr/ocsge
 Format : GeoPackage (.gpkg), couche OCCUPATION_SOL
-Département 13 – 2023
+Département 13 – millésime 2020/2023
 
 Nomenclature OCS GE v2 — codes CS retenus pour le pâturage :
   CS2.2.1    Formations herbacées (pelouses, prairies) — IDÉAL, base pct_prairie
-  CS2.1.2    Formations arbustives (landes, maquis — pâturage possible)
-  CS2.1.1.1  Peuplement de feuillus (pâturage sous-bois)
+             105 419 polygones bruts dans le dep. 13
+  CS2.1.2    Formations arbustives (landes, maquis, garrigue) — typique du massif marseillais
+             13 120 polygones
+  CS2.1.1.1  Peuplement de feuillus — pâturage sous-bois possible
+             38 058 polygones
   CS2.1.1.3  Peuplement mixte
-  CS2.2.2    Autres formations non ligneuses
+             11 533 polygones
+  CS2.2.2    Autres formations non ligneuses (mousses, lichens, zones humides)
+             absent du dep. 13 (0 polygone) — conservé par cohérence de nomenclature
 
-Codes US compatibles :
-  US1.1 / US1.2 / US1.3 / US1.4   Agriculture
-  US5                               Espaces ouverts / friches
+Codes CS volontairement EXCLUS du filtre :
+  CS2.1.1.2  Peuplement de conifères (pins parasol, pins d'Alep, massif des Calanques)
+             31 803 polygones bruts, dont 21 727 avec un usage pastoral (US1.2/US5/US235).
+             CHOIX : exclu car le sous-bois de pins méditerranéens offre peu d'herbage
+             consommable (sol rocheux, litière acide) et le risque incendie y est élevé.
+             Si l'on souhaite explorer ces zones à l'avenir, ajouter "CS2.1.1.2"
+             dans medium_priority ou low_priority.
+  CS2.1.3    Autres formations ligneuses (vignes, oliviers, vergers)
+             3 326 polygones, quasi-exclusivement en usage agricole US1.1.
+             CHOIX : exclu car ce sont des cultures pérennes non grazable sans dommage.
+
+Codes US compatibles retenus :
+  US1.1 / US1.2 / US1.3 / US1.4   Agriculture (prairies, sylviculture…)
+  US5                               Espaces ouverts / naturels / friches
   US235                             Forêts et espaces semi-naturels
 
 Codes US incompatibles (exclus) :
-  US2 / US3 / US4.x   Industrie, commerce, habitat
+  US2 / US3 / US4.x   Industrie, commerce, habitat, équipements
   US6.x                Réseaux (routes, rails, ports)
 """
 
@@ -39,9 +55,11 @@ PASTURE_CS_CODES: dict[str, list[str]] = {
         "CS2.1.1.3",  # Peuplement mixte
         "CS2.2.2",    # Autres formations non ligneuses
     ],
+    # Codes low_priority : listés pour mémoire mais NON utilisés dans PASTURE_CS_PREFIXES
+    # (voir docstring du module pour le raisonnement détaillé)
     "low_priority": [
-        "CS2.1.3",    # Autres formations ligneuses (vignes…)
-        "CS2.1.1.2",  # Peuplement de conifères (moins adapté)
+        "CS2.1.3",    # Autres formations ligneuses (vignes, oliviers) — cultures pérennes, exclu
+        "CS2.1.1.2",  # Peuplement de conifères (pins Calanques) — sous-bois pauvre, risque feu, exclu
     ],
 }
 

@@ -280,6 +280,12 @@ const map = L.map('map', { zoomControl: false }).setView([43.3, 5.4], 12);
 L.control.zoom({ position: 'bottomright' }).addTo(map);
 L.control.scale({ metric: true, imperial: false, position: 'bottomright' }).addTo(map);
 
+// Pane intermédiaire pour la couche OCS GE : au-dessus du fond de carte (200)
+// mais en-dessous des parcelles cadastrales (400) et des markers (600)
+map.createPane('ocsPane');
+map.getPane('ocsPane').style.zIndex = 300;
+map.getPane('ocsPane').style.pointerEvents = 'none';
+
 const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
   attribution: '© <a href="https://openstreetmap.org">OpenStreetMap</a>',
   maxZoom: 19,
@@ -452,6 +458,7 @@ function showOcsLayer() {
         crossOrigin: 'anonymous',
         minZoom: 6,
         maxZoom: 16,
+        pane: 'ocsPane',
       });
     }
     map.addLayer(ocsWmsLayer);

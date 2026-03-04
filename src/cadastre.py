@@ -30,100 +30,113 @@ except ImportError:  # pragma: no cover
 # Codes INSEE des 16 arrondissements de Marseille (cadastre Etalab)
 MARSEILLE_CODES: list[str] = [f"132{i:02d}" for i in range(1, 17)]  # 13201 … 13216
 
+# Noms des arrondissements de Marseille (13201 = 1er, …, 13216 = 16e)
+_MARSEILLE_NAMES: dict[str, str] = {
+    f"132{i:02d}": f"Marseille {i}{'er' if i == 1 else 'e'} Arrondissement"
+    for i in range(1, 17)
+}
+
 # Toutes les communes AMP hors Marseille (source : geo.api.gouv.fr/epcis/200054807/communes)
-AMP_COMMUNE_CODES: list[str] = [
-    "13001",  # Aix-en-Provence
-    "13002",  # Allauch
-    "13003",  # Alleins
-    "13005",  # Aubagne
-    "13007",  # Auriol
-    "13008",  # Aurons
-    "13009",  # La Barben
-    "13012",  # Beaurecueil
-    "13013",  # Belcodène
-    "13014",  # Berre-l'Étang
-    "13015",  # Bouc-Bel-Air
-    "13016",  # La Bouilladisse
-    "13019",  # Cabriès
-    "13020",  # Cadolive
-    "13021",  # Carry-le-Rouet
-    "13022",  # Cassis
-    "13023",  # Ceyreste
-    "13024",  # Charleval
-    "13025",  # Châteauneuf-le-Rouge
-    "13026",  # Châteauneuf-les-Martigues
-    "13028",  # La Ciotat
-    "13029",  # Cornillon-Confoux
-    "13030",  # Cuges-les-Pins
-    "13031",  # La Destrousse
-    "13032",  # Éguilles
-    "13033",  # Ensuès-la-Redonne
-    "13035",  # Eyguières
-    "13037",  # La Fare-les-Oliviers
-    "13039",  # Fos-sur-Mer
-    "13040",  # Fuveau
-    "13041",  # Gardanne
-    "13042",  # Gémenos
-    "13043",  # Gignac-la-Nerthe
-    "13044",  # Grans
-    "13046",  # Gréasque
-    "13047",  # Istres
-    "13048",  # Jouques
-    "13049",  # Lamanon
-    "13050",  # Lambesc
-    "13051",  # Lançon-Provence
-    "13053",  # Mallemort
-    "13054",  # Marignane
-    "13056",  # Martigues
-    "13059",  # Meyrargues
-    "13060",  # Meyreuil
-    "13062",  # Mimet
-    "13063",  # Miramas
-    "13069",  # Pélissanne
-    "13070",  # La Penne-sur-Huveaune
-    "13071",  # Les Pennes-Mirabeau
-    "13072",  # Peynier
-    "13073",  # Peypin
-    "13074",  # Peyrolles-en-Provence
-    "13075",  # Plan-de-Cuques
-    "13077",  # Port-de-Bouc
-    "13078",  # Port-Saint-Louis-du-Rhône
-    "13079",  # Puyloubier
-    "13080",  # Le Puy-Sainte-Réparade
-    "13081",  # Rognac
-    "13082",  # Rognes
-    "13084",  # La Roque-d'Anthéron
-    "13085",  # Roquefort-la-Bédoule
-    "13086",  # Roquevaire
-    "13087",  # Rousset
-    "13088",  # Le Rove
-    "13090",  # Saint-Antonin-sur-Bayon
-    "13091",  # Saint-Cannat
-    "13092",  # Saint-Chamas
-    "13093",  # Saint-Estève-Janson
-    "13095",  # Saint-Marc-Jaumegarde
-    "13098",  # Saint-Mitre-les-Remparts
-    "13099",  # Saint-Paul-lès-Durance
-    "13101",  # Saint-Savournin
-    "13102",  # Saint-Victoret
-    "13103",  # Salon-de-Provence
-    "13104",  # Sausset-les-Pins
-    "13105",  # Sénas
-    "13106",  # Septèmes-les-Vallons
-    "13107",  # Simiane-Collongue
-    "13109",  # Le Tholonet
-    "13110",  # Trets
-    "13111",  # Vauvenargues
-    "13112",  # Velaux
-    "13113",  # Venelles
-    "13114",  # Ventabren
-    "13115",  # Vernègues
-    "13117",  # Vitrolles
-    "13118",  # Coudoux
-    "13119",  # Carnoux-en-Provence
-    "83120",  # Saint-Zacharie (Var)
-    "84089",  # Pertuis (Vaucluse)
-]
+# Format : code INSEE → nom de commune
+AMP_COMMUNE_NAMES: dict[str, str] = {
+    "13001": "Aix-en-Provence",
+    "13002": "Allauch",
+    "13003": "Alleins",
+    "13005": "Aubagne",
+    "13007": "Auriol",
+    "13008": "Aurons",
+    "13009": "La Barben",
+    "13012": "Beaurecueil",
+    "13013": "Belcodène",
+    "13014": "Berre-l'Étang",
+    "13015": "Bouc-Bel-Air",
+    "13016": "La Bouilladisse",
+    "13019": "Cabriès",
+    "13020": "Cadolive",
+    "13021": "Carry-le-Rouet",
+    "13022": "Cassis",
+    "13023": "Ceyreste",
+    "13024": "Charleval",
+    "13025": "Châteauneuf-le-Rouge",
+    "13026": "Châteauneuf-les-Martigues",
+    "13028": "La Ciotat",
+    "13029": "Cornillon-Confoux",
+    "13030": "Cuges-les-Pins",
+    "13031": "La Destrousse",
+    "13032": "Éguilles",
+    "13033": "Ensuès-la-Redonne",
+    "13035": "Eyguières",
+    "13037": "La Fare-les-Oliviers",
+    "13039": "Fos-sur-Mer",
+    "13040": "Fuveau",
+    "13041": "Gardanne",
+    "13042": "Gémenos",
+    "13043": "Gignac-la-Nerthe",
+    "13044": "Grans",
+    "13046": "Gréasque",
+    "13047": "Istres",
+    "13048": "Jouques",
+    "13049": "Lamanon",
+    "13050": "Lambesc",
+    "13051": "Lançon-Provence",
+    "13053": "Mallemort",
+    "13054": "Marignane",
+    "13056": "Martigues",
+    "13059": "Meyrargues",
+    "13060": "Meyreuil",
+    "13062": "Mimet",
+    "13063": "Miramas",
+    "13069": "Pélissanne",
+    "13070": "La Penne-sur-Huveaune",
+    "13071": "Les Pennes-Mirabeau",
+    "13072": "Peynier",
+    "13073": "Peypin",
+    "13074": "Peyrolles-en-Provence",
+    "13075": "Plan-de-Cuques",
+    "13077": "Port-de-Bouc",
+    "13078": "Port-Saint-Louis-du-Rhône",
+    "13079": "Puyloubier",
+    "13080": "Le Puy-Sainte-Réparade",
+    "13081": "Rognac",
+    "13082": "Rognes",
+    "13084": "La Roque-d'Anthéron",
+    "13085": "Roquefort-la-Bédoule",
+    "13086": "Roquevaire",
+    "13087": "Rousset",
+    "13088": "Le Rove",
+    "13090": "Saint-Antonin-sur-Bayon",
+    "13091": "Saint-Cannat",
+    "13092": "Saint-Chamas",
+    "13093": "Saint-Estève-Janson",
+    "13095": "Saint-Marc-Jaumegarde",
+    "13098": "Saint-Mitre-les-Remparts",
+    "13099": "Saint-Paul-lès-Durance",
+    "13101": "Saint-Savournin",
+    "13102": "Saint-Victoret",
+    "13103": "Salon-de-Provence",
+    "13104": "Sausset-les-Pins",
+    "13105": "Sénas",
+    "13106": "Septèmes-les-Vallons",
+    "13107": "Simiane-Collongue",
+    "13109": "Le Tholonet",
+    "13110": "Trets",
+    "13111": "Vauvenargues",
+    "13112": "Velaux",
+    "13113": "Venelles",
+    "13114": "Ventabren",
+    "13115": "Vernègues",
+    "13117": "Vitrolles",
+    "13118": "Coudoux",
+    "13119": "Carnoux-en-Provence",
+    "83120": "Saint-Zacharie",
+    "84089": "Pertuis",
+}
+
+# Table complète code INSEE → nom commune (arrondissements + communes AMP)
+CODE_TO_COMMUNE: dict[str, str] = {**_MARSEILLE_NAMES, **AMP_COMMUNE_NAMES}
+
+# Listes de codes seuls (rétrocompatibilité)
+AMP_COMMUNE_CODES: list[str] = list(AMP_COMMUNE_NAMES.keys())
 
 # Liste complète de tous les codes à charger (arrondissements Marseille + communes AMP)
 ALL_AMP_CODES: list[str] = MARSEILLE_CODES + AMP_COMMUNE_CODES
@@ -138,6 +151,9 @@ def _read_cadastre_file(path: Path, code: str) -> gpd.GeoDataFrame:
         buf = io.BytesIO(f.read())
     gdf = gpd.read_file(buf, engine="pyogrio")
     gdf["code_commune"] = code
+    # Nom de commune systématiquement renseigné depuis la table INSEE
+    # → couvre 100% des parcelles, y compris celles sans propriétaire moral
+    gdf["nom_commune_cadastre"] = CODE_TO_COMMUNE.get(code, code)
     return gdf
 
 
@@ -237,6 +253,17 @@ def join_owners_to_cadastre(
     # Garder une seule entrée par parcelle (le premier propriétaire trouvé)
     id_col = "id" if "id" in result.columns else result.columns[0]
     result = result.drop_duplicates(subset=[id_col])
+
+    # nom_commune : utiliser celui des personnes morales si présent,
+    # sinon fallback sur nom_commune_cadastre (issu du code INSEE, 100% renseigné)
+    if "nom_commune" in result.columns and "nom_commune_cadastre" in result.columns:
+        result["nom_commune"] = result["nom_commune"].where(
+            result["nom_commune"].notna(),
+            result["nom_commune_cadastre"],
+        )
+        result = result.drop(columns=["nom_commune_cadastre"])
+    elif "nom_commune_cadastre" in result.columns:
+        result = result.rename(columns={"nom_commune_cadastre": "nom_commune"})
 
     if include_without_owner:
         count_with_owner = result["denomination"].notna().sum() if "denomination" in result.columns else 0

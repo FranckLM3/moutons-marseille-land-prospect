@@ -314,6 +314,8 @@ fetch(DATA_FILE)
   });
 
 // ── Chips communes (multiselect) ──────────────────────────────────────────
+let showAllCommunes = false; // false = n'affiche que les actives (+ résultats recherche)
+
 function buildCommuneChips() {
   const container = document.getElementById('commune-chips');
   const seen = new Set();
@@ -328,7 +330,13 @@ function buildCommuneChips() {
     if (name.toLowerCase().includes(DEFAULT_FILTER.toLowerCase())) selectedCommunes.add(name);
   });
 
-  allCommunes.forEach(name => {
+  // Actives en premier, puis inactives
+  const sorted = [
+    ...allCommunes.filter(n => selectedCommunes.has(n)),
+    ...allCommunes.filter(n => !selectedCommunes.has(n)),
+  ];
+
+  sorted.forEach(name => {
     const chip = document.createElement('div');
     const active = selectedCommunes.has(name);
     chip.className = 'comm-chip ' + (active ? 'active' : 'inactive');
@@ -341,24 +349,65 @@ function buildCommuneChips() {
     });
     container.appendChild(chip);
   });
+
+  _applyChipVisibility('');
+  _updateToggleBtn();
 }
 
 function refreshCommuneChips() {
-  document.querySelectorAll('#commune-chips .comm-chip').forEach(chip => {
+  // Reconstruire l'ordre : actives d'abord
+  const container = document.getElementById('commune-chips');
+  const chips = [...container.querySelectorAll('.comm-chip')];
+  chips.forEach(chip => {
     const active = selectedCommunes.has(chip.dataset.commune);
     chip.className = 'comm-chip ' + (active ? 'active' : 'inactive');
   });
+  // Trier dans le DOM : actives en premier
+  const sorted = chips.sort((a, b) => {
+    const aA = selectedCommunes.has(a.dataset.commune) ? 0 : 1;
+    const bA = selectedCommunes.has(b.dataset.commune) ? 0 : 1;
+    return aA - bA;
+  });
+  sorted.forEach(c => container.appendChild(c));
+
+  const query = (document.getElementById('commune-search')?.value || '');
+  _applyChipVisibility(query);
+  _updateToggleBtn();
+}
+
+function _applyChipVisibility(query) {
+  const q = query.trim().toLowerCase();
+  document.querySelectorAll('#commune-chips .comm-chip').forEach(chip => {
+    const nameMatch = !q || chip.dataset.commune.toLowerCase().includes(q);
+    const isActive  = selectedCommunes.has(chip.dataset.commune);
+    // Visible si : correspond à la recherche ET (actif OU showAllCommunes)
+    chip.style.display = (nameMatch && (isActive || showAllCommunes || q)) ? '' : 'none';
+  });
+}
+
+function _updateToggleBtn() {
+  const btn = document.getElementById('commune-toggle-btn');
+  if (!btn) return;
+  const inactiveCount = allCommunes.filter(c => !selectedCommunes.has(c)).length;
+  if (inactiveCount === 0) { btn.style.display = 'none'; return; }
+  btn.style.display = '';
+  btn.textContent = showAllCommunes
+    ? `▲ Masquer les non sélectionnées (${inactiveCount})`
+    : `▼ Voir toutes les communes (${inactiveCount} de plus)`;
+}
+
+function toggleShowAllCommunes() {
+  showAllCommunes = !showAllCommunes;
+  const query = (document.getElementById('commune-search')?.value || '');
+  _applyChipVisibility(query);
+  _updateToggleBtn();
 }
 
 function selectAllCommunes()   { allCommunes.forEach(c => selectedCommunes.add(c)); refreshCommuneChips(); applyFilters(); }
 function deselectAllCommunes() { selectedCommunes.clear(); refreshCommuneChips(); applyFilters(); }
 
 function filterCommuneChips(query) {
-  const q = query.trim().toLowerCase();
-  document.querySelectorAll('#commune-chips .comm-chip').forEach(chip => {
-    const match = chip.dataset.commune.toLowerCase().includes(q);
-    chip.style.display = match ? '' : 'none';
-  });
+  _applyChipVisibility(query);
 }
 
 function getGeometryBounds(geometry) {
@@ -541,6 +590,9 @@ function resetFilters() {
   allCommunes.forEach(name => {
     if (name.toLowerCase().includes(DEFAULT_FILTER.toLowerCase())) selectedCommunes.add(name);
   });
+  showAllCommunes = false;
+  const communeSearch = document.getElementById('commune-search');
+  if (communeSearch) communeSearch.value = '';
   refreshCommuneChips();
   applyFilters();
 }
@@ -626,6 +678,10 @@ function buildPopup(feature) {
 function switchTab(tab) {
   document.querySelectorAll('.sidebar-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
   document.querySelectorAll('.sidebar-pane').forEach(p => p.classList.toggle('active', p.id === 'pane-' + tab));
+  // Recadre la carte sur la sélection courante à chaque changement d'onglet
+  if (currentLayer) {
+    try { map.fitBounds(currentLayer.getBounds(), { padding: [20, 20], maxZoom: 14 }); } catch(_) {}
+  }
 }
 
 // ── Mobile sidebar toggle ───────────────────────────────────────────────

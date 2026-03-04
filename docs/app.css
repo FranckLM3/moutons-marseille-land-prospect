@@ -359,7 +359,7 @@
     /* ── Légende gradient ── */
     .legend-gradient-bar {
       height: 10px; border-radius: 5px; margin: 6px 0 4px;
-      background: linear-gradient(to right, #64748b, #94a3b8, #86efac, #4ade80, #16a34a);
+      background: linear-gradient(to right, #94a3b8, #bbf7d0, #86efac, #4ade80, #16a34a);
       border: 1px solid rgba(255,255,255,0.1);
     }
     .legend-gradient-labels { display: flex; justify-content: space-between; font-size: 10px; color: #555; }

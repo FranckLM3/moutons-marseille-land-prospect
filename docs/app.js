@@ -10,14 +10,13 @@ const IGN_WMTS_URL = 'https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VE
 const IGN_OCS_LAYER = 'OCSGE.COUVERTURE.2021-2023';
 const DEFAULT_FILTER = 'Marseille'; // pré-sélectionne toutes les communes contenant ce mot
 
-// Couleur selon % prairie (0=gris foncé → gris clair → vert clair → vert vif)
+// Couleur selon % pâturable (null ou 0 = gris, >0 = vert clair→foncé)
 function colorForPrairie(pct) {
-  if (pct == null) return '#94a3b8';
-  if (pct < 5)   return '#64748b'; // gris foncé  — quasi nul
-  if (pct < 20)  return '#94a3b8'; // gris clair  — faible
-  if (pct < 40)  return '#86efac'; // vert pâle   — moyen
-  if (pct < 65)  return '#4ade80'; // vert clair  — bon
-  return '#16a34a';                // vert vif    — excellent
+  if (pct == null || pct === 0) return '#94a3b8'; // gris — pas de végétation pâturable
+  if (pct < 25)  return '#bbf7d0'; // vert très pâle  — faible (1–24%)
+  if (pct < 50)  return '#86efac'; // vert pâle       — moyen  (25–49%)
+  if (pct < 75)  return '#4ade80'; // vert clair      — bon    (50–74%)
+  return '#16a34a';                // vert foncé      — excellent (≥75%)
 }
 
 // Libellés OCS GE v2
@@ -621,7 +620,7 @@ function buildPopup(feature) {
       <div class="popup-grid">
         <span class="k">Commune</span>       <span class="v">${commune}</span>
         <span class="k">Surface totale</span><span class="v">${totalM2}</span>
-        <span class="k">Pâturable</span>  <span class="v">${prairieM2} · ${pct}</span>
+        <span class="k">Végét. pâturable</span>  <span class="v">${prairieM2} · ${pct}</span>
         ${csRows}
         <span class="k">Propriétaire</span>  <span class="v">${own}</span>
       </div>

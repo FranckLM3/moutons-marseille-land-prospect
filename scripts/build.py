@@ -87,7 +87,7 @@ def run(args: argparse.Namespace) -> None:
     from src.cadastre import add_prairie_ratio, join_owners_to_cadastre, load_cadastre
     from src.export import export_geojson, export_ocs_geojson, prepare_for_export
     from src.filters import add_area_columns, filter_by_area
-    from src.land_cover import filter_pasture_zones, load_ocsge
+    from src.land_cover import filter_pasture_cs_only, filter_pasture_zones, load_ocsge
     from src.owners import load_owners
 
     t0 = time.time()
@@ -101,7 +101,8 @@ def run(args: argparse.Namespace) -> None:
 
     # ── Étape 2 : filtrage zones pâturables OCS GE ────────────────────────
     print("\n[2/5] Filtrage zones pâturables OCS GE…")
-    ocsge = filter_pasture_zones(ocsge_raw)
+    ocsge = filter_pasture_zones(ocsge_raw)      # CS + US → sélection des parcelles à afficher
+    ocsge_cs = filter_pasture_cs_only(ocsge_raw) # CS seul → calcul de pct_prairie (couverture réelle)
     ocsge_full = ocsge_raw
 
     if len(ocsge) == 0:
@@ -128,7 +129,7 @@ def run(args: argparse.Namespace) -> None:
 
     # ── Étape 4 : calcul % prairie par parcelle ───────────────────────────
     print("\n[4/5] Calcul % prairie par parcelle (intersection OCS GE)…")
-    cadastre = add_prairie_ratio(cadastre, ocsge)
+    cadastre = add_prairie_ratio(cadastre, ocsge_cs)
 
     # Filtre optionnel sur % prairie minimum
     if args.min_prairie > 0:

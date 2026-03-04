@@ -160,8 +160,43 @@ def load_ocsge(gpkg_path: str | Path) -> gpd.GeoDataFrame:
     return gdf
 
 
+def filter_pasture_cs_only(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+    """Filtre les zones pâturables selon la couverture (CS) uniquement, sans filtre US.
+
+    Utilisé pour le calcul de pct_prairie : on veut mesurer la vraie surface
+    végétale pâturable quelle que soit l'affectation administrative (usage).
+    Le filtre US (usage) sert uniquement à sélectionner quelles parcelles
+    apparaissent dans les résultats, pas à calculer leur couverture végétale.
+
+    Parameters
+    ----------
+    gdf:
+        GeoDataFrame issu de load_ocsge().
+
+    Returns
+    -------
+    Sous-ensemble des polygones avec couverture herbacée/lande/arborée pâturable.
+    """
+    cs_col = _find_column(gdf, ["code_cs", "CS", "cs"])
+    if cs_col is None:
+        raise ValueError(
+            f"Colonne 'code_cs' introuvable. Colonnes disponibles : {list(gdf.columns)}"
+        )
+    cs_values = gdf[cs_col].astype(str)
+    mask = cs_values.apply(lambda v: any(v.startswith(p) for p in PASTURE_CS_PREFIXES))
+    result = gdf.loc[mask].copy()
+    print(
+        f"  → {len(result):,} polygones CS pâturables (filtre CS seul, sans US) "
+        f"(sur {len(gdf):,} polygones OCS GE)"
+    )
+    return result
+
+
 def filter_pasture_zones(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
-    """Filtre les zones pâturables selon la couverture (CS) et l'usage (US).
+    """Filtre les zones pâturables selon la couverture (CS) ET l'usage (US).
+
+    Utilisé pour sélectionner les parcelles cadastrales à afficher : seules
+    celles dont l'OCS GE indique un usage agricole/naturel sont retenues.
 
     Parameters
     ----------

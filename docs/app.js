@@ -446,6 +446,7 @@ function showOcsLayer() {
         format: 'image/png',
         transparent: true,
         attribution: '© IGN',
+        crossOrigin: 'anonymous',
       });
     }
     map.addLayer(ocsWmsLayer);

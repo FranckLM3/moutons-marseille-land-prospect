@@ -10,9 +10,9 @@ const IGN_WMTS_URL = 'https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VE
 const IGN_OCS_LAYER = 'OCSGE.COUVERTURE.2021-2023';
 const DEFAULT_FILTER = 'Marseille'; // pré-sélectionne toutes les communes contenant ce mot
 
-// Couleur selon % pâturable (null ou 0 = gris, >0 = vert clair→foncé)
+// Couleur selon % pâturable (0 ou null = gris, >0 = vert clair→foncé)
 function colorForPrairie(pct) {
-  if (pct == null || pct === 0) return '#94a3b8'; // gris — pas de végétation pâturable
+  if (pct == null || pct === 0) return '#94a3b8'; // gris — 0% sol minéral/bâti/route
   if (pct < 25)  return '#bbf7d0'; // vert très pâle  — faible (1–24%)
   if (pct < 50)  return '#86efac'; // vert pâle       — moyen  (25–49%)
   if (pct < 75)  return '#4ade80'; // vert clair      — bon    (50–74%)
@@ -571,8 +571,8 @@ function buildPopup(feature) {
   const p = feature.properties || {};
   const totalM2   = p.area_m2    != null ? `${Number(p.area_m2).toLocaleString('fr')} m²` : '—';
   const prairieKnown = hasPrairieData(p);
-  const prairieM2 = prairieKnown && p.prairie_m2 != null ? `${Number(p.prairie_m2).toLocaleString('fr')} m²` : 'Donnée manquante';
-  const pct       = prairieKnown && p.pct_prairie != null ? `${p.pct_prairie} %` : 'N/A';
+  const prairieM2 = prairieKnown && p.prairie_m2 != null ? `${Number(p.prairie_m2).toLocaleString('fr')} m²` : '0 m²';
+  const pct       = prairieKnown && p.pct_prairie != null ? `${p.pct_prairie} %` : '0 %';
   const own       = p.denomination || '—';
   const commune   = p.nom_commune  || '—';
 

@@ -50,7 +50,8 @@ def prepare_for_export(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
 
     # Surface pâturable absolue (m²) = area_m2 × pct_prairie / 100
     if "area_m2" in gdf.columns and "pct_prairie" in gdf.columns:
-        gdf["prairie_m2"] = (gdf["area_m2"] * gdf["pct_prairie"] / 100).round(0).astype(int)
+        prairie_m2 = (gdf["area_m2"] * gdf["pct_prairie"] / 100).round(0)
+        gdf["prairie_m2"] = prairie_m2.where(prairie_m2.notna(), None)
 
     # Sélection des colonnes disponibles
     desired = KEEP_COLS_CADASTRE + KEEP_COLS_OWNERS

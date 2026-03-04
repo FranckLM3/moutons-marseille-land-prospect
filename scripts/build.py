@@ -64,12 +64,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--owners",   default=str(DEFAULT_OWNERS))
     parser.add_argument("--cadastre", default=str(DEFAULT_CADASTRE))
     parser.add_argument("--output",   default=str(DEFAULT_OUTPUT))
-    parser.add_argument("--min-area", type=float, default=5_000,
-                        help="Surface minimale des parcelles en m² (défaut : 5000)")
+    parser.add_argument("--min-area", type=float, default=0,
+                        help="Surface minimale des parcelles en m² (défaut : 0 = pas de filtre)")
     parser.add_argument("--max-area", type=float, default=None)
     parser.add_argument("--min-prairie", type=float, default=0.0,
                         help="pct prairie minimum (0-100, defaut : 0 = pas de filtre)")
-    parser.add_argument("--include-without-owner", action="store_true",
+    parser.add_argument("--include-without-owner", action="store_true", default=True,
                         help="Conserve les parcelles sans propriétaire (jointure gauche)")
     parser.add_argument("--inject-only", action="store_true",
                         help="Génère uniquement docs/index.html depuis le template (sans pipeline géospatial)")
@@ -108,7 +108,8 @@ def run(args: argparse.Namespace) -> None:
     print("\n[3/5] Chargement cadastre + propriétaires…")
     cadastre = load_cadastre(args.cadastre)
     cadastre = add_area_columns(cadastre)
-    cadastre = filter_by_area(cadastre, min_area_m2=args.min_area, max_area_m2=args.max_area)
+    if args.min_area > 0 or args.max_area is not None:
+        cadastre = filter_by_area(cadastre, min_area_m2=args.min_area, max_area_m2=args.max_area)
 
     owners = load_owners(args.owners)
     cadastre = join_owners_to_cadastre(

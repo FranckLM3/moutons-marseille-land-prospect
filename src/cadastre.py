@@ -15,10 +15,17 @@ from __future__ import annotations
 
 import gzip
 import io
+import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 import geopandas as gpd
 import pandas as pd
+
+try:
+    from tqdm import tqdm
+except ImportError:  # pragma: no cover
+    tqdm = None
 
 # Codes INSEE des 16 arrondissements de Marseille (cadastre Etalab)
 MARSEILLE_CODES: list[str] = [f"132{i:02d}" for i in range(1, 17)]  # 13201 … 13216
@@ -126,6 +133,14 @@ ALL_AMP_CODES: list[str] = MARSEILLE_CODES + AMP_COMMUNE_CODES
 PRAIRIE_CS_PREFIXES = ("CS2.2.1",)
 
 
+def _read_cadastre_file(path: Path, code: str) -> gpd.GeoDataFrame:
+    with gzip.open(path, "rb") as f:
+        buf = io.BytesIO(f.read())
+    gdf = gpd.read_file(buf, engine="pyogrio")
+    gdf["code_commune"] = code
+    return gdf
+
+
 def load_cadastre(cadastre_dir: str | Path) -> gpd.GeoDataFrame:
     """Charge et fusionne les parcelles cadastrales de toutes les communes AMP.
 
@@ -142,16 +157,25 @@ def load_cadastre(cadastre_dir: str | Path) -> gpd.GeoDataFrame:
     cadastre_dir = Path(cadastre_dir)
     gdfs = []
     missing = []
+    tasks: list[tuple[Path, str]] = []
     for code in ALL_AMP_CODES:
         path = cadastre_dir / f"parcelles-{code}.json.gz"
         if not path.exists():
             missing.append(path.name)
             continue
-        with gzip.open(path, "rb") as f:
-            buf = io.BytesIO(f.read())
-        gdf = gpd.read_file(buf, engine="pyogrio")
-        gdf["code_commune"] = code
-        gdfs.append(gdf)
+        tasks.append((path, code))
+
+    if tasks:
+        max_workers = min(8, os.cpu_count() or 4)
+        progress = tqdm(total=len(tasks), desc="Chargement cadastre", unit="fichier") if tqdm else None
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = [executor.submit(_read_cadastre_file, path, code) for path, code in tasks]
+            for fut in as_completed(futures):
+                gdfs.append(fut.result())
+                if progress:
+                    progress.update(1)
+        if progress:
+            progress.close()
 
     if missing:
         print(f"  ⚠ {len(missing)} fichier(s) manquant(s) — lancez : python scripts/download_cadastre_amp.py")
@@ -279,8 +303,9 @@ def add_prairie_ratio(
         .rename("prairie_m2")
     )
     parcel_areas = cad_proj.set_index("_idx")["_area"]
-    pct = (prairie_ocs / parcel_areas * 100).clip(0, 100).round(1).fillna(0.0)
-    cad_proj["pct_prairie"] = cad_proj["_idx"].map(pct).fillna(0.0)
+    pct = (prairie_ocs / parcel_areas * 100).clip(0, 100).round(1)
+    cad_proj["prairie_m2"] = cad_proj["_idx"].map(prairie_ocs)
+    cad_proj["pct_prairie"] = cad_proj["_idx"].map(pct)
 
     # Détail surfaces par code CS → colonne cs_detail (JSON string)
     # ex: {"CS2.2.1": 1200, "CS2.1.2": 450}
@@ -300,6 +325,9 @@ def add_prairie_ratio(
 
     # Reprojeter dans le CRS original
     result = cad_proj.to_crs(cadastre.crs)
-    prairie_mean = result["pct_prairie"].mean()
-    print(f"  → % prairie moyen : {prairie_mean:.1f}%")
+    prairie_mean = result["pct_prairie"].dropna().mean()
+    if prairie_mean == prairie_mean:
+        print(f"  → % prairie moyen : {prairie_mean:.1f}%")
+    else:
+        print("  → % prairie moyen : N/A (aucune donnée prairie)")
     return result

@@ -139,18 +139,29 @@
     .map-info-body ul { padding-left: 18px; margin-bottom: 8px; }
     .map-info-body li { margin-bottom: 4px; }
     .map-info-note { color: #94a3b8; margin-top: 10px; }
-    .ocs-legend {
+    .ocs-legend-list {
       display: grid;
       grid-template-columns: 1fr;
       gap: 6px;
       margin: 6px 0 4px;
+      max-height: 180px;
+      overflow-y: auto;
+      padding-right: 4px;
     }
+    .ocs-legend-list::-webkit-scrollbar { width: 3px; }
+    .ocs-legend-list::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 3px; }
     .ocs-legend-row {
       display: flex;
       align-items: center;
       gap: 8px;
       font-size: 11px;
       color: #e2e8f0;
+    }
+    .ocs-legend-image {
+      max-width: 100%;
+      height: auto;
+      border-radius: 6px;
+      border: 1px solid rgba(255,255,255,0.15);
     }
     .ocs-swatch {
       width: 12px;
@@ -163,7 +174,10 @@
     .ocs-cs212 { background: #84cc16; }
     .ocs-cs2111 { background: #38bdf8; }
     .ocs-cs2113 { background: #0ea5e9; }
-    .ocs-cs222 { background: #facc15; }
+  .ocs-cs222 { background: #facc15; }
+    .ocs-legend-panel label {
+      margin-bottom: 8px;
+    }
     #sidebar-overlay {
       position: fixed;
       inset: 0;

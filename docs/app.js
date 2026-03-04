@@ -1,6 +1,9 @@
 // ── Config ────────────────────────────────────────────────────────────────
 const DATA_FILE    = 'pasture_zones.geojson';
 const OCS_FILE     = 'ocs_ge_pasture.geojson';
+// IGN WMS (laisser vide pour utiliser le GeoJSON local)
+const IGN_WMS_URL = '';
+const IGN_OCS_LAYER = '';
 const DEFAULT_FILTER = 'Marseille'; // pré-sélectionne toutes les communes contenant ce mot
 
 // Couleur selon % prairie (0=gris foncé → gris clair → vert clair → vert vif)
@@ -37,6 +40,7 @@ let showValidatedOnly = false;    // filtre sur parcelles validées par contribu
 let showOwnerKnownOnly = false;   // filtre sur parcelles avec propriétaire connu
 let includeMissingPrairie = false; // inclure parcelles sans données prairie
 let ocsLayer = null;
+let ocsWmsLayer = null;
 let ocsLoaded = false;
 let ocsData = null;
 
@@ -423,6 +427,7 @@ if (includeMissingPrairieEl) {
 }
 
 const toggleOcsEl = document.getElementById('toggle-ocs');
+const ocsLegendList = document.getElementById('ocs-legend-list');
 if (toggleOcsEl) {
   toggleOcsEl.addEventListener('change', () => {
     if (toggleOcsEl.checked) {
@@ -434,6 +439,19 @@ if (toggleOcsEl) {
 }
 
 function showOcsLayer() {
+  if (hasIgnWmsConfig()) {
+    if (!ocsWmsLayer) {
+      ocsWmsLayer = L.tileLayer.wms(IGN_WMS_URL, {
+        layers: IGN_OCS_LAYER,
+        format: 'image/png',
+        transparent: true,
+        attribution: '© IGN',
+      });
+    }
+    map.addLayer(ocsWmsLayer);
+    updateLegendFromWms();
+    return;
+  }
   if (ocsLayer && map.hasLayer(ocsLayer)) return;
   if (ocsData) {
     rebuildOcsLayer();
@@ -448,13 +466,17 @@ function showOcsLayer() {
     })
     .then(data => {
       ocsData = data;
+      buildOcsLegend();
       rebuildOcsLayer();
     })
     .catch(err => {
       ocsLoaded = false;
       if (toggleOcsEl) toggleOcsEl.checked = false;
       console.warn(err.message);
-      alert('Impossible de charger la couche OCS GE pâturable.');
+      alert('Impossible de charger la couche OCS GE complète.');
+      if (ocsLegendList) {
+        ocsLegendList.textContent = "Impossible de charger la légende OCS GE.";
+      }
     });
 }
 
@@ -462,6 +484,13 @@ function hideOcsLayer() {
   if (ocsLayer && map.hasLayer(ocsLayer)) {
     map.removeLayer(ocsLayer);
   }
+  if (ocsWmsLayer && map.hasLayer(ocsWmsLayer)) {
+    map.removeLayer(ocsWmsLayer);
+  }
+}
+
+function hasIgnWmsConfig() {
+  return Boolean(IGN_WMS_URL && IGN_OCS_LAYER);
 }
 
 function rebuildOcsLayer() {
@@ -475,30 +504,73 @@ function rebuildOcsLayer() {
       const geomBounds = getGeometryBounds(feature.geometry);
       return geomBounds ? bounds.intersects(geomBounds) : false;
     },
-    style: feature => {
-      const code = String(feature?.properties?.code_cs || '').toUpperCase();
-      let color = '#64748b';
-      if (code.startsWith('CS2.2.1')) color = '#22c55e';
-      else if (code.startsWith('CS2.1.2')) color = '#84cc16';
-      else if (code.startsWith('CS2.1.1.1')) color = '#38bdf8';
-      else if (code.startsWith('CS2.1.1.3')) color = '#0ea5e9';
-      else if (code.startsWith('CS2.2.2')) color = '#facc15';
-      return {
-        color,
-        weight: 0.5,
-        opacity: 0.65,
-        fillColor: color,
-        fillOpacity: 0.2,
-      };
-    },
+    style: feature => styleOcsFeature(feature),
   });
   map.addLayer(ocsLayer);
 }
 
+function styleOcsFeature(feature) {
+  const code = String(feature?.properties?.code_cs || '').toUpperCase();
+  const color = getOcsColor(code);
+  return {
+    color,
+    weight: 0.5,
+    opacity: 0.65,
+    fillColor: color,
+    fillOpacity: 0.2,
+  };
+}
+
+function getOcsColor(code) {
+  if (!code) return '#64748b';
+  if (code.startsWith('CS2.2.1')) return '#22c55e';
+  if (code.startsWith('CS2.1.2')) return '#84cc16';
+  if (code.startsWith('CS2.1.1.1')) return '#38bdf8';
+  if (code.startsWith('CS2.1.1.3')) return '#0ea5e9';
+  if (code.startsWith('CS2.2.2')) return '#facc15';
+  return '#64748b';
+}
+
+function buildOcsLegend() {
+  if (!ocsLegendList) return;
+  if (hasIgnWmsConfig()) return;
+  if (!ocsData || !Array.isArray(ocsData.features)) {
+    ocsLegendList.textContent = "Aucune donnée OCS GE disponible.";
+    return;
+  }
+  const codes = new Set();
+  ocsData.features.forEach(feature => {
+    const code = String(feature?.properties?.code_cs || '').toUpperCase();
+    if (code) codes.add(code);
+  });
+  const sorted = [...codes].sort((a, b) => a.localeCompare(b, 'fr'));
+  if (!sorted.length) {
+    ocsLegendList.textContent = "Aucune classe OCS GE trouvée.";
+    return;
+  }
+  ocsLegendList.innerHTML = sorted.map(code => {
+    const label = CS_LABELS[code] || code;
+    const color = getOcsColor(code);
+    return `<div class="ocs-legend-row"><span class="ocs-swatch" style="background:${color}"></span> ${code} — ${label}</div>`;
+  }).join('');
+}
+
 function updateOcsLayerVisibility() {
+  if (hasIgnWmsConfig()) return;
   if (!toggleOcsEl || !toggleOcsEl.checked) return;
   if (!ocsData) return;
   rebuildOcsLayer();
+}
+
+function updateLegendFromWms() {
+  if (!ocsLegendList) return;
+  if (!hasIgnWmsConfig()) return;
+  const legendUrl = `${IGN_WMS_URL}?service=WMS&request=GetLegendGraphic&format=image/png&layer=${encodeURIComponent(IGN_OCS_LAYER)}`;
+  ocsLegendList.innerHTML = `
+    <div class="ocs-legend-row">
+      <img class="ocs-legend-image" src="${legendUrl}" alt="Légende OCS GE" />
+    </div>
+  `;
 }
 
 function hasKnownOwner(props) {

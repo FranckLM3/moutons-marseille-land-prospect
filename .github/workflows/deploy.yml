@@ -39,6 +39,8 @@ jobs:
       - name: Generate index.html from template
         env:
           ORS_API_KEY: ${{ secrets.ORS_API_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: python scripts/build.py --inject-only
 
       - name: Setup Pages

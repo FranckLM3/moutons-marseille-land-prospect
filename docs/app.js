@@ -34,6 +34,7 @@ let allCommunes      = [];        // liste triée complète
 let minAreaHa        = 0.5;       // surface pâturable min en ha (défaut 5 000 m²)
 let showValidatedOnly = false;    // filtre sur parcelles validées par contributeurs
 let showOwnerKnownOnly = false;   // filtre sur parcelles avec propriétaire connu
+let includeMissingPrairie = false; // inclure parcelles sans données prairie
 
 // ── Avis contributeurs (localStorage) ───────────────────────────────────
 const FEEDBACK_STORAGE_KEY = 'parcel-feedback-v1';
@@ -375,11 +376,24 @@ if (ownerKnownOnlyEl) {
   });
 }
 
+const includeMissingPrairieEl = document.getElementById('include-missing-prairie');
+if (includeMissingPrairieEl) {
+  includeMissingPrairieEl.addEventListener('change', () => {
+    includeMissingPrairie = includeMissingPrairieEl.checked;
+    applyFilters();
+  });
+}
+
 function hasKnownOwner(props) {
   if (!props) return false;
   const denom = (props.denomination || '').trim();
   const siren = (props.siren || '').toString().trim();
   return Boolean(denom) || Boolean(siren);
+}
+
+function hasPrairieData(props) {
+  if (!props) return false;
+  return props.prairie_m2 != null || props.pct_prairie != null;
 }
 
 // ── Filtrage ──────────────────────────────────────────────────────────────
@@ -390,7 +404,9 @@ function getFiltered() {
       const c = (p.nom_commune || '').trim();
       if (!selectedCommunes.has(c)) return false;
     }
-    if (minAreaHa > 0 && (p.prairie_m2 || 0) < minAreaHa * 10000) return false;
+    const prairieKnown = hasPrairieData(p);
+    if (!prairieKnown && !includeMissingPrairie) return false;
+    if (prairieKnown && minAreaHa > 0 && (p.prairie_m2 || 0) < minAreaHa * 10000) return false;
     if (showValidatedOnly) {
       const parcelId = getParcelId(f);
       if (getLocalFeedbackStatus(parcelId) !== 'yes') return false;
@@ -441,6 +457,8 @@ function resetFilters() {
   showValidatedOnly = false;
   if (ownerKnownOnlyEl) ownerKnownOnlyEl.checked = false;
   showOwnerKnownOnly = false;
+  if (includeMissingPrairieEl) includeMissingPrairieEl.checked = false;
+  includeMissingPrairie = false;
   // Réinitialise communes → Marseille
   selectedCommunes.clear();
   allCommunes.forEach(name => {
@@ -454,8 +472,9 @@ function resetFilters() {
 function buildPopup(feature) {
   const p = feature.properties || {};
   const totalM2   = p.area_m2    != null ? `${Number(p.area_m2).toLocaleString('fr')} m²` : '—';
-  const prairieM2 = p.prairie_m2 != null ? `${Number(p.prairie_m2).toLocaleString('fr')} m²` : '—';
-  const pct       = p.pct_prairie != null ? `${p.pct_prairie} %` : '—';
+  const prairieKnown = hasPrairieData(p);
+  const prairieM2 = prairieKnown && p.prairie_m2 != null ? `${Number(p.prairie_m2).toLocaleString('fr')} m²` : 'Donnée manquante';
+  const pct       = prairieKnown && p.pct_prairie != null ? `${p.pct_prairie} %` : 'N/A';
   const own       = p.denomination || '—';
   const commune   = p.nom_commune  || '—';
 

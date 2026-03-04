@@ -2,8 +2,8 @@
 const DATA_FILE    = 'pasture_zones.geojson';
 const OCS_FILE     = 'ocs_ge_pasture.geojson';
 // IGN WMS (laisser vide pour utiliser le GeoJSON local)
-const IGN_WMS_URL = '';
-const IGN_OCS_LAYER = '';
+const IGN_WMS_URL = 'https://data.geopf.fr/wms-r/wms';
+const IGN_OCS_LAYER = 'LANDUSE.OCS_GE';
 const DEFAULT_FILTER = 'Marseille'; // pré-sélectionne toutes les communes contenant ce mot
 
 // Couleur selon % prairie (0=gris foncé → gris clair → vert clair → vert vif)

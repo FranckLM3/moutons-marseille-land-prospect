@@ -141,9 +141,16 @@ AMP_COMMUNE_CODES: list[str] = list(AMP_COMMUNE_NAMES.keys())
 # Liste complète de tous les codes à charger (arrondissements Marseille + communes AMP)
 ALL_AMP_CODES: list[str] = MARSEILLE_CODES + AMP_COMMUNE_CODES
 
-# Préfixe CS2.2.1 = formations herbacées (pelouses, prairies) — OCS GE v2
-# C'est la seule couverture comptabilisée comme "prairie" dans pct_prairie
-PRAIRIE_CS_PREFIXES = ("CS2.2.1",)
+# Codes CS2 pâturables retenus pour le calcul de pct_prairie — OCS GE v2
+# pct_prairie = surface totale de ces couvertures / surface parcelle × 100
+# CS2.1.1.2 (conifères) et CS2.1.3 (vignes/oliviers) volontairement exclus.
+PRAIRIE_CS_PREFIXES = (
+    "CS2.2.1",    # Formations herbacées (prairies, pelouses) — cœur de cible
+    "CS2.1.2",    # Formations arbustives (landes, maquis, garrigue)
+    "CS2.1.1.1",  # Peuplement de feuillus (pâturage sous-bois)
+    "CS2.1.1.3",  # Peuplement mixte
+    "CS2.2.2",    # Autres formations non ligneuses
+)
 
 
 def _read_cadastre_file(path: Path, code: str) -> gpd.GeoDataFrame:

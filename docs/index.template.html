@@ -103,6 +103,18 @@
         <h2>Filtres</h2>
 
         <div class="filter-section">
+          <label>Communes</label>
+          <div style="display:flex;gap:4px;margin-bottom:5px">
+            <button class="btn btn-ghost" style="font-size:10px;padding:3px 8px" onclick="selectAllCommunes()">Toutes</button>
+            <button class="btn btn-ghost" style="font-size:10px;padding:3px 8px" onclick="deselectAllCommunes()">Aucune</button>
+          </div>
+          <div class="commune-search-wrap">
+            <input type="text" id="commune-search" placeholder="Rechercher une commune…" oninput="filterCommuneChips(this.value)" />
+          </div>
+          <div id="commune-chips"></div>
+        </div>
+
+        <div class="filter-section">
           <label>Surface pâturable min.</label>
           <div class="slider-row">
             <input type="range" id="area-slider" min="0" max="20000" value="5000" step="500" />
@@ -136,18 +148,6 @@
             <input type="checkbox" id="toggle-ocs" />
             Afficher l'OCS GE complet
           </label>
-        </div>
-
-        <div class="filter-section">
-          <label>Communes</label>
-          <div style="display:flex;gap:4px;margin-bottom:5px">
-            <button class="btn btn-ghost" style="font-size:10px;padding:3px 8px" onclick="selectAllCommunes()">Toutes</button>
-            <button class="btn btn-ghost" style="font-size:10px;padding:3px 8px" onclick="deselectAllCommunes()">Aucune</button>
-          </div>
-          <div class="commune-search-wrap">
-            <input type="text" id="commune-search" placeholder="Rechercher une commune…" oninput="filterCommuneChips(this.value)" />
-          </div>
-          <div id="commune-chips"></div>
         </div>
 
         <div class="btn-row">

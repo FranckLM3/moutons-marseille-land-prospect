@@ -38,6 +38,7 @@ let showOwnerKnownOnly = false;   // filtre sur parcelles avec propriétaire con
 let includeMissingPrairie = false; // inclure parcelles sans données prairie
 let ocsLayer = null;
 let ocsLoaded = false;
+let ocsData = null;
 
 // ── Avis contributeurs (localStorage) ───────────────────────────────────
 const FEEDBACK_STORAGE_KEY = 'parcel-feedback-v1';
@@ -352,6 +353,40 @@ function filterCommuneChips(query) {
   });
 }
 
+function getGeometryBounds(geometry) {
+  if (!geometry || !geometry.coordinates) return null;
+  let minLat = 90, minLng = 180, maxLat = -90, maxLng = -180;
+  const walk = coords => {
+    if (!Array.isArray(coords)) return;
+    if (typeof coords[0] === 'number' && typeof coords[1] === 'number') {
+      const lng = coords[0];
+      const lat = coords[1];
+      minLat = Math.min(minLat, lat);
+      maxLat = Math.max(maxLat, lat);
+      minLng = Math.min(minLng, lng);
+      maxLng = Math.max(maxLng, lng);
+      return;
+    }
+    coords.forEach(walk);
+  };
+  walk(geometry.coordinates);
+  if (minLat > maxLat || minLng > maxLng) return null;
+  return L.latLngBounds([minLat, minLng], [maxLat, maxLng]);
+}
+
+function getSelectedCommunesBounds() {
+  if (!selectedCommunes.size) return null;
+  let bounds = null;
+  allFeatures.forEach(f => {
+    const commune = (f.properties?.nom_commune || '').trim();
+    if (!selectedCommunes.has(commune)) return;
+    const geomBounds = getGeometryBounds(f.geometry);
+    if (!geomBounds) return;
+    bounds = bounds ? bounds.extend(geomBounds) : geomBounds;
+  });
+  return bounds;
+}
+
 // ── Sliders ───────────────────────────────────────────────────────────────
 document.getElementById('area-slider').addEventListener('input', function() {
   const m2 = parseInt(this.value);
@@ -399,8 +434,9 @@ if (toggleOcsEl) {
 }
 
 function showOcsLayer() {
-  if (ocsLayer) {
-    map.addLayer(ocsLayer);
+  if (ocsLayer && map.hasLayer(ocsLayer)) return;
+  if (ocsData) {
+    rebuildOcsLayer();
     return;
   }
   if (ocsLoaded) return;
@@ -411,25 +447,8 @@ function showOcsLayer() {
       return r.json();
     })
     .then(data => {
-      ocsLayer = L.geoJSON(data, {
-        style: feature => {
-          const code = String(feature?.properties?.code_cs || '').toUpperCase();
-          let color = '#64748b';
-          if (code.startsWith('CS2.2.1')) color = '#22c55e';
-          else if (code.startsWith('CS2.1.2')) color = '#84cc16';
-          else if (code.startsWith('CS2.1.1.1')) color = '#38bdf8';
-          else if (code.startsWith('CS2.1.1.3')) color = '#0ea5e9';
-          else if (code.startsWith('CS2.2.2')) color = '#facc15';
-          return {
-            color,
-            weight: 0.5,
-            opacity: 0.65,
-            fillColor: color,
-            fillOpacity: 0.2,
-          };
-        },
-      });
-      map.addLayer(ocsLayer);
+      ocsData = data;
+      rebuildOcsLayer();
     })
     .catch(err => {
       ocsLoaded = false;
@@ -443,6 +462,43 @@ function hideOcsLayer() {
   if (ocsLayer && map.hasLayer(ocsLayer)) {
     map.removeLayer(ocsLayer);
   }
+}
+
+function rebuildOcsLayer() {
+  if (!ocsData) return;
+  if (selectedCommunes.size === 0) return;
+  if (ocsLayer) map.removeLayer(ocsLayer);
+  const bounds = getSelectedCommunesBounds();
+  ocsLayer = L.geoJSON(ocsData, {
+    filter: feature => {
+      if (!bounds) return false;
+      const geomBounds = getGeometryBounds(feature.geometry);
+      return geomBounds ? bounds.intersects(geomBounds) : false;
+    },
+    style: feature => {
+      const code = String(feature?.properties?.code_cs || '').toUpperCase();
+      let color = '#64748b';
+      if (code.startsWith('CS2.2.1')) color = '#22c55e';
+      else if (code.startsWith('CS2.1.2')) color = '#84cc16';
+      else if (code.startsWith('CS2.1.1.1')) color = '#38bdf8';
+      else if (code.startsWith('CS2.1.1.3')) color = '#0ea5e9';
+      else if (code.startsWith('CS2.2.2')) color = '#facc15';
+      return {
+        color,
+        weight: 0.5,
+        opacity: 0.65,
+        fillColor: color,
+        fillOpacity: 0.2,
+      };
+    },
+  });
+  map.addLayer(ocsLayer);
+}
+
+function updateOcsLayerVisibility() {
+  if (!toggleOcsEl || !toggleOcsEl.checked) return;
+  if (!ocsData) return;
+  rebuildOcsLayer();
 }
 
 function hasKnownOwner(props) {
@@ -459,6 +515,7 @@ function hasPrairieData(props) {
 
 // ── Filtrage ──────────────────────────────────────────────────────────────
 function getFiltered() {
+  if (selectedCommunes.size === 0) return [];
   return allFeatures.filter(f => {
     const p = f.properties || {};
     if (selectedCommunes.size > 0) {
@@ -506,6 +563,8 @@ function applyFilters() {
   document.getElementById('count-visible').textContent = filtered.length.toLocaleString('fr');
   document.getElementById('stat-ha').textContent       = totalHa.toLocaleString('fr', { maximumFractionDigits: 0 }) + ' ha';
   document.getElementById('stat-pct').textContent      = pct + '%';
+
+  updateOcsLayerVisibility();
 }
 
 // ── Réinitialisation ──────────────────────────────────────────────────────

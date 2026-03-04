@@ -33,6 +33,147 @@ let selectedCommunes = new Set(); // multiselect Set — rempli par buildCommune
 let allCommunes      = [];        // liste triée complète
 let minAreaHa        = 0;         // surface pâturable min en ha (0 = pas de filtre)
 
+// ── Avis contributeurs (localStorage) ───────────────────────────────────
+const FEEDBACK_STORAGE_KEY = 'parcel-feedback-v1';
+let parcelFeedback = loadParcelFeedback();
+const SUPABASE_TABLE = 'parcel_feedback';
+const supabaseClient = initSupabaseClient();
+const pendingSupabaseFetch = new Set();
+
+function loadParcelFeedback() {
+  try {
+    const raw = localStorage.getItem(FEEDBACK_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch (_) {
+    return {};
+  }
+}
+
+function initSupabaseClient() {
+  const url = window.SUPABASE_URL || '';
+  const key = window.SUPABASE_ANON_KEY || '';
+  if (!url || !key || url.includes('__SUPABASE_URL__') || key.includes('__SUPABASE_ANON_KEY__')) {
+    return null;
+  }
+  if (!window.supabase || !window.supabase.createClient) return null;
+  return window.supabase.createClient(url, key);
+}
+
+function supabaseEnabled() {
+  return Boolean(supabaseClient);
+}
+
+async function fetchFeedbackFromSupabase(parcelId) {
+  if (!supabaseEnabled() || pendingSupabaseFetch.has(parcelId)) return;
+  pendingSupabaseFetch.add(parcelId);
+  try {
+    const { data, error } = await supabaseClient
+      .from(SUPABASE_TABLE)
+      .select('status, comment, updated_at')
+      .eq('parcel_id', parcelId)
+      .maybeSingle();
+
+    if (!error && data) {
+      parcelFeedback[parcelId] = {
+        status: data.status || 'unknown',
+        comment: data.comment || '',
+        updatedAt: data.updated_at || null,
+      };
+      saveParcelFeedback();
+      updateFeedbackUI(parcelId);
+    }
+  } catch (_) {
+    // ignore
+  } finally {
+    pendingSupabaseFetch.delete(parcelId);
+  }
+}
+
+async function upsertFeedbackToSupabase(parcelId) {
+  if (!supabaseEnabled()) return;
+  const feedback = getParcelFeedback(parcelId);
+  try {
+    await supabaseClient
+      .from(SUPABASE_TABLE)
+      .upsert({
+        parcel_id: parcelId,
+        status: feedback.status || 'unknown',
+        comment: feedback.comment || '',
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'parcel_id' });
+  } catch (_) {
+    // ignore
+  }
+}
+
+function saveParcelFeedback() {
+  try {
+    localStorage.setItem(FEEDBACK_STORAGE_KEY, JSON.stringify(parcelFeedback));
+  } catch (_) {}
+}
+
+function getParcelId(feature) {
+  const p = feature.properties || {};
+  if (p.id) return String(p.id);
+  const c = centroid(feature);
+  const lat = c ? c.lat.toFixed(6) : '0';
+  const lng = c ? c.lng.toFixed(6) : '0';
+  return `${p.nom_commune || 'comm'}-${p.area_m2 || 0}-${lat}-${lng}`;
+}
+
+function getParcelFeedback(parcelId) {
+  if (!parcelFeedback[parcelId]) {
+    fetchFeedbackFromSupabase(parcelId);
+  }
+  return parcelFeedback[parcelId] || { status: 'unknown', comment: '' };
+}
+
+function escapeForAttr(value) {
+  return String(value).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
+function makeDomId(value) {
+  return encodeURIComponent(String(value)).replace(/%/g, '_');
+}
+
+function setParcelStatus(parcelId, status) {
+  const existing = parcelFeedback[parcelId] || {};
+  parcelFeedback[parcelId] = { ...existing, status, updatedAt: new Date().toISOString() };
+  saveParcelFeedback();
+  updateFeedbackUI(parcelId);
+  upsertFeedbackToSupabase(parcelId);
+}
+
+function saveParcelComment(parcelId) {
+  const domId = makeDomId(parcelId);
+  const textarea = document.getElementById(`comment-${domId}`);
+  if (!textarea) return;
+  const existing = parcelFeedback[parcelId] || {};
+  parcelFeedback[parcelId] = { ...existing, comment: textarea.value.trim(), updatedAt: new Date().toISOString() };
+  saveParcelFeedback();
+  updateFeedbackUI(parcelId);
+  upsertFeedbackToSupabase(parcelId);
+}
+
+function updateFeedbackUI(parcelId) {
+  const domId = makeDomId(parcelId);
+  const feedback = getParcelFeedback(parcelId);
+  const statusEl = document.getElementById(`status-${domId}`);
+  if (statusEl) {
+    const label = feedback.status === 'yes' ? '✅ Pâturable' : feedback.status === 'no' ? '🚫 Non pâturable' : '⏺️ Avis non défini';
+    statusEl.textContent = label;
+  }
+  const tagEl = document.getElementById(`tag-${domId}`);
+  if (tagEl) {
+    tagEl.textContent = feedback.status === 'yes' ? '✅ Pâturable (contrib)' : feedback.status === 'no' ? '🚫 Non pâturable' : '⏺️ Avis non défini';
+    tagEl.className = `tag ${feedback.status === 'yes' ? 'tag-green' : feedback.status === 'no' ? 'tag-red' : 'tag-gray'}`;
+  }
+  document.querySelectorAll(`[data-feedback-id="${domId}"]`).forEach(btn => {
+    const val = btn.getAttribute('data-status');
+    btn.classList.toggle('active', val === feedback.status);
+  });
+}
+
 // ── Carte ─────────────────────────────────────────────────────────────────
 const map = L.map('map', { zoomControl: false }).setView([43.3, 5.4], 12);
 L.control.zoom({ position: 'bottomright' }).addTo(map);
@@ -199,6 +340,13 @@ function buildPopup(feature) {
   const own       = p.denomination || '—';
   const commune   = p.nom_commune  || '—';
 
+  const parcelId = getParcelId(feature);
+  const parcelIdEsc = escapeForAttr(parcelId);
+  const domId = makeDomId(parcelId);
+  const feedback = getParcelFeedback(parcelId);
+  const feedbackLabel = feedback.status === 'yes' ? '✅ Pâturable' : feedback.status === 'no' ? '🚫 Non pâturable' : '⏺️ Avis non défini';
+  const feedbackTagClass = feedback.status === 'yes' ? 'tag-green' : feedback.status === 'no' ? 'tag-red' : 'tag-gray';
+
   // Détail par type de couverture
   let csRows = '';
   try {
@@ -219,6 +367,7 @@ function buildPopup(feature) {
   } catch(_) {}
 
   const sirenTag = p.siren ? `<span class="tag tag-blue">SIREN&nbsp;${p.siren}</span>` : '';
+  const feedbackTag = `<span id="tag-${domId}" class="tag ${feedbackTagClass}">${feedbackLabel}</span>`;
 
   const links = [
     p.siren ? `<a class="popup-link" href="https://annuaire-entreprises.data.gouv.fr/entreprise/${p.siren}" target="_blank" rel="noopener">🔍 Fiche entreprise →</a>` : '',
@@ -235,7 +384,18 @@ function buildPopup(feature) {
         ${csRows}
         <span class="k">Propriétaire</span>  <span class="v">${own}</span>
       </div>
-      <div class="popup-tags">${sirenTag}</div>
+      <div class="popup-tags">${feedbackTag}${sirenTag}</div>
+      <div class="popup-feedback">
+        <div class="popup-feedback-title">Avis contributeurs</div>
+        <div class="popup-feedback-status" id="status-${domId}">${feedbackLabel}</div>
+        <div class="popup-feedback-actions">
+          <button class="popup-feedback-btn ${feedback.status === 'yes' ? 'active' : ''}" data-feedback-id="${domId}" data-status="yes" onclick="setParcelStatus('${parcelIdEsc}', 'yes')">✅ Pâturable</button>
+          <button class="popup-feedback-btn ${feedback.status === 'no' ? 'active' : ''}" data-feedback-id="${domId}" data-status="no" onclick="setParcelStatus('${parcelIdEsc}', 'no')">🚫 Non</button>
+          <button class="popup-feedback-btn ${feedback.status === 'unknown' ? 'active' : ''}" data-feedback-id="${domId}" data-status="unknown" onclick="setParcelStatus('${parcelIdEsc}', 'unknown')">⏺️ Indécis</button>
+        </div>
+        <textarea id="comment-${domId}" class="popup-feedback-text" rows="3" placeholder="Commentaire (terrain, accès, clôture…)">${feedback.comment || ''}</textarea>
+        <button class="popup-feedback-save" onclick="saveParcelComment('${parcelIdEsc}')">💾 Enregistrer</button>
+      </div>
     </div>
     ${links ? `<div class="popup-footer">${links}</div>` : ''}`;
 }

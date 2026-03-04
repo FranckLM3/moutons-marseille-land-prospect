@@ -279,10 +279,69 @@
     }
     .tag-green  { background: rgba(74,222,128,0.15); color: #4ade80; border: 1px solid rgba(74,222,128,0.3); }
     .tag-blue   { background: rgba(96,165,250,0.15); color: #60a5fa; border: 1px solid rgba(96,165,250,0.3); }
+    .tag-red    { background: rgba(248,113,113,0.15); color: #f87171; border: 1px solid rgba(248,113,113,0.35); }
+    .tag-gray   { background: rgba(148,163,184,0.15); color: #94a3b8; border: 1px solid rgba(148,163,184,0.3); }
     .popup-footer {
       border-top: 1px solid rgba(255,255,255,0.07);
       padding: 8px 16px;
     }
     .popup-link { font-size: 11px; color: #4ade80; text-decoration: none; display: block; text-align: center; }
     .popup-link:hover { text-decoration: underline; }
+
+    .popup-feedback {
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px dashed rgba(255,255,255,0.08);
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .popup-feedback-title {
+      font-size: 11px;
+      font-weight: 700;
+      color: #e0e0e0;
+    }
+    .popup-feedback-status {
+      font-size: 11px;
+      color: #94a3b8;
+    }
+    .popup-feedback-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .popup-feedback-btn {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.12);
+      color: #94a3b8;
+      font-size: 11px;
+      padding: 4px 6px;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .popup-feedback-btn.active {
+      color: #e0e0e0;
+      border-color: rgba(74,222,128,0.5);
+      background: rgba(74,222,128,0.12);
+    }
+    .popup-feedback-text {
+      width: 100%;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 6px;
+      color: #e0e0e0;
+      padding: 6px 8px;
+      font-size: 11px;
+      resize: vertical;
+    }
+    .popup-feedback-save {
+      align-self: flex-start;
+      background: rgba(96,165,250,0.2);
+      color: #60a5fa;
+      border: 1px solid rgba(96,165,250,0.4);
+      font-size: 11px;
+      padding: 4px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+    }
 

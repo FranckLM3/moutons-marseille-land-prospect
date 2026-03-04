@@ -96,6 +96,28 @@ echo "ORS_API_KEY=votre_clé_ici" > .env
 
 Obtenir une clé gratuite sur [openrouteservice.org](https://openrouteservice.org/dev/#/signup) (2 000 req/jour).
 
+### 3b. (Optionnel) Activer les avis contributeurs via Supabase
+
+Créer un projet Supabase, puis ajouter une table `parcel_feedback` :
+
+```sql
+create table if not exists parcel_feedback (
+      parcel_id text primary key,
+      status text default 'unknown',
+      comment text default '',
+      updated_at timestamptz default now()
+);
+```
+
+Puis ajouter dans `.env` :
+
+```bash
+SUPABASE_URL=https://<votre-projet>.supabase.co
+SUPABASE_ANON_KEY=<votre-anon-key>
+```
+
+Sans ces variables, la carte utilise uniquement le stockage local du navigateur.
+
 ### 4. Télécharger les données OCS GE D13
 
 ```bash
@@ -171,6 +193,8 @@ code local  →  push Gitea  →  push GitHub  →  GitHub Actions  →  GitHub 
 **1. Configurer le secret GitHub** dans *Settings → Secrets and variables → Actions* :
 ```
 ORS_API_KEY = <votre clé>
+SUPABASE_URL = <votre url>
+SUPABASE_ANON_KEY = <votre anon key>
 ```
 
 **2. Ajouter le remote GitHub** (une seule fois) :

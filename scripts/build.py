@@ -155,13 +155,20 @@ def _inject_ors_key(html_path: Path) -> None:
     template_path = html_path.parent / "index.template.html"
     env_path = ROOT / ".env"
     ors_key = os.environ.get("ORS_API_KEY", "")
+    supabase_url = os.environ.get("SUPABASE_URL", "")
+    supabase_key = os.environ.get("SUPABASE_ANON_KEY", "")
 
-    if not ors_key and env_path.exists():
+    if env_path.exists():
         for line in env_path.read_text().splitlines():
             line = line.strip()
-            if line.startswith("ORS_API_KEY="):
+            if not line or line.startswith("#"):
+                continue
+            if not ors_key and line.startswith("ORS_API_KEY="):
                 ors_key = line.split("=", 1)[1].strip()
-                break
+            if not supabase_url and line.startswith("SUPABASE_URL="):
+                supabase_url = line.split("=", 1)[1].strip()
+            if not supabase_key and line.startswith("SUPABASE_ANON_KEY="):
+                supabase_key = line.split("=", 1)[1].strip()
 
     if not ors_key:
         print("⚠️  ORS_API_KEY non trouvée (.env ou variable d'environnement) — index.html non généré")
@@ -173,6 +180,8 @@ def _inject_ors_key(html_path: Path) -> None:
 
     content = template_path.read_text(encoding="utf-8")
     content = content.replace("__ORS_KEY__", ors_key)
+    content = content.replace("__SUPABASE_URL__", supabase_url)
+    content = content.replace("__SUPABASE_ANON_KEY__", supabase_key)
     html_path.write_text(content, encoding="utf-8")
     print(f"  → {html_path.name} généré depuis template avec clé ORS injectée")
 

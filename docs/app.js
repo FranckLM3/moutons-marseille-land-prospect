@@ -33,6 +33,7 @@ let selectedCommunes = new Set(); // multiselect Set — rempli par buildCommune
 let allCommunes      = [];        // liste triée complète
 let minAreaHa        = 0.5;       // surface pâturable min en ha (défaut 5 000 m²)
 let showValidatedOnly = false;    // filtre sur parcelles validées par contributeurs
+let showOwnerKnownOnly = false;   // filtre sur parcelles avec propriétaire connu
 
 // ── Avis contributeurs (localStorage) ───────────────────────────────────
 const FEEDBACK_STORAGE_KEY = 'parcel-feedback-v1';
@@ -366,6 +367,21 @@ if (validatedOnlyEl) {
   });
 }
 
+const ownerKnownOnlyEl = document.getElementById('owner-known-only');
+if (ownerKnownOnlyEl) {
+  ownerKnownOnlyEl.addEventListener('change', () => {
+    showOwnerKnownOnly = ownerKnownOnlyEl.checked;
+    applyFilters();
+  });
+}
+
+function hasKnownOwner(props) {
+  if (!props) return false;
+  const denom = (props.denomination || '').trim();
+  const siren = (props.siren || '').toString().trim();
+  return Boolean(denom) || Boolean(siren);
+}
+
 // ── Filtrage ──────────────────────────────────────────────────────────────
 function getFiltered() {
   return allFeatures.filter(f => {
@@ -379,6 +395,7 @@ function getFiltered() {
       const parcelId = getParcelId(f);
       if (getLocalFeedbackStatus(parcelId) !== 'yes') return false;
     }
+    if (showOwnerKnownOnly && !hasKnownOwner(p)) return false;
     return true;
   });
 }
@@ -422,6 +439,8 @@ function resetFilters() {
   document.getElementById('area-value').textContent = '5 000 m²';
   if (validatedOnlyEl) validatedOnlyEl.checked = false;
   showValidatedOnly = false;
+  if (ownerKnownOnlyEl) ownerKnownOnlyEl.checked = false;
+  showOwnerKnownOnly = false;
   // Réinitialise communes → Marseille
   selectedCommunes.clear();
   allCommunes.forEach(name => {

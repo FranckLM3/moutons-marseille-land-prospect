@@ -592,11 +592,11 @@ function buildPopup(feature) {
     if (entries.length) {
       csRows = entries.map(([code, m2]) => {
         const label = CS_LABELS[code] || code;
-        // CS2.1.1.2 = conifères (pins Calanques) : sol rocheux + risque feu → non pâturable
-        const warning = code === 'CS2.1.1.2'
-          ? ' <span title="Conifères (pins) : sol pauvre, risque incendie — non pâturable" style="cursor:help">⚠️</span>'
+        // CS2.1.1.2 = conifères (pins) : sol pauvre, risque incendie — non comptabilisé dans pct_prairie
+        const note = code === 'CS2.1.1.2'
+          ? ' <span style="color:#f97316;font-size:0.8em">(non pâturable)</span>'
           : '';
-        return `<span class="k" style="padding-left:16px;color:#555">${label}${warning}</span><span class="v" style="color:#aaa">${Number(m2).toLocaleString('fr')} m²</span>`;
+        return `<span class="k" style="padding-left:16px;color:#555">${label}${note}</span><span class="v" style="color:#aaa">${Number(m2).toLocaleString('fr')} m²</span>`;
       }).join('');
     }
   } catch(_) {}

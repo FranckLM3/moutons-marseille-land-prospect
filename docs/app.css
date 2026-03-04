@@ -173,8 +173,10 @@
     .ocs-cs221 { background: #22c55e; }
     .ocs-cs212 { background: #84cc16; }
     .ocs-cs2111 { background: #38bdf8; }
+    .ocs-cs2112 { background: #64748b; }
     .ocs-cs2113 { background: #0ea5e9; }
-  .ocs-cs222 { background: #facc15; }
+    .ocs-cs222 { background: #facc15; }
+    .ocs-note { color: #f97316; font-size: 0.78em; margin-left: 4px; }
     .ocs-legend-panel label {
       margin-bottom: 8px;
     }

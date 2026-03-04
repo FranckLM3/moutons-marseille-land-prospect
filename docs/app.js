@@ -32,11 +32,13 @@ let currentLayer     = null;
 let selectedCommunes = new Set(); // multiselect Set — rempli par buildCommuneChips()
 let allCommunes      = [];        // liste triée complète
 let minAreaHa        = 0;         // surface pâturable min en ha (0 = pas de filtre)
+let showValidatedOnly = false;    // filtre sur parcelles validées par contributeurs
 
 // ── Avis contributeurs (localStorage) ───────────────────────────────────
 const FEEDBACK_STORAGE_KEY = 'parcel-feedback-v1';
 let parcelFeedback = loadParcelFeedback();
 const SUPABASE_TABLE = 'parcel_feedback';
+const SUPABASE_COMMENTS_TABLE = 'parcel_comments';
 const supabaseClient = initSupabaseClient();
 const pendingSupabaseFetch = new Set();
 
@@ -69,14 +71,14 @@ async function fetchFeedbackFromSupabase(parcelId) {
   try {
     const { data, error } = await supabaseClient
       .from(SUPABASE_TABLE)
-      .select('status, comment, updated_at')
+      .select('status, updated_at')
       .eq('parcel_id', parcelId)
       .maybeSingle();
 
     if (!error && data) {
       parcelFeedback[parcelId] = {
         status: data.status || 'unknown',
-        comment: data.comment || '',
+        comments: parcelFeedback[parcelId]?.comments || [],
         updatedAt: data.updated_at || null,
       };
       saveParcelFeedback();
@@ -98,9 +100,35 @@ async function upsertFeedbackToSupabase(parcelId) {
       .upsert({
         parcel_id: parcelId,
         status: feedback.status || 'unknown',
-        comment: feedback.comment || '',
         updated_at: new Date().toISOString(),
       }, { onConflict: 'parcel_id' });
+  } catch (_) {
+    // ignore
+  }
+}
+
+async function fetchCommentsFromSupabase(parcelId) {
+  if (!supabaseEnabled()) return;
+  try {
+    const { data, error } = await supabaseClient
+      .from(SUPABASE_COMMENTS_TABLE)
+      .select('author, message, created_at')
+      .eq('parcel_id', parcelId)
+      .order('created_at', { ascending: false });
+
+    if (!error && Array.isArray(data)) {
+      const existing = parcelFeedback[parcelId] || { status: 'unknown', comments: [] };
+      parcelFeedback[parcelId] = {
+        ...existing,
+        comments: data.map(row => ({
+          author: row.author || 'Anonyme',
+          message: row.message || '',
+          createdAt: row.created_at || null,
+        })),
+      };
+      saveParcelFeedback();
+      updateCommentsUI(parcelId);
+    }
   } catch (_) {
     // ignore
   }
@@ -110,6 +138,10 @@ function saveParcelFeedback() {
   try {
     localStorage.setItem(FEEDBACK_STORAGE_KEY, JSON.stringify(parcelFeedback));
   } catch (_) {}
+}
+
+function getLocalFeedbackStatus(parcelId) {
+  return parcelFeedback[parcelId]?.status || 'unknown';
 }
 
 function getParcelId(feature) {
@@ -124,8 +156,9 @@ function getParcelId(feature) {
 function getParcelFeedback(parcelId) {
   if (!parcelFeedback[parcelId]) {
     fetchFeedbackFromSupabase(parcelId);
+    fetchCommentsFromSupabase(parcelId);
   }
-  return parcelFeedback[parcelId] || { status: 'unknown', comment: '' };
+  return parcelFeedback[parcelId] || { status: 'unknown', comments: [] };
 }
 
 function escapeForAttr(value) {
@@ -142,17 +175,69 @@ function setParcelStatus(parcelId, status) {
   saveParcelFeedback();
   updateFeedbackUI(parcelId);
   upsertFeedbackToSupabase(parcelId);
+  if (showValidatedOnly) applyFilters();
 }
 
-function saveParcelComment(parcelId) {
+function addParcelComment(parcelId) {
   const domId = makeDomId(parcelId);
+  const nameInput = document.getElementById(`commenter-${domId}`);
   const textarea = document.getElementById(`comment-${domId}`);
   if (!textarea) return;
-  const existing = parcelFeedback[parcelId] || {};
-  parcelFeedback[parcelId] = { ...existing, comment: textarea.value.trim(), updatedAt: new Date().toISOString() };
+  const author = nameInput?.value.trim() || 'Anonyme';
+  const message = textarea.value.trim();
+  if (!message) return;
+
+  const existing = parcelFeedback[parcelId] || { status: 'unknown', comments: [] };
+  const newComment = { author, message, createdAt: new Date().toISOString() };
+  parcelFeedback[parcelId] = {
+    ...existing,
+    comments: [newComment, ...(existing.comments || [])],
+    updatedAt: new Date().toISOString(),
+  };
   saveParcelFeedback();
+  updateCommentsUI(parcelId);
   updateFeedbackUI(parcelId);
-  upsertFeedbackToSupabase(parcelId);
+  textarea.value = '';
+
+  if (supabaseEnabled()) {
+    supabaseClient
+      .from(SUPABASE_COMMENTS_TABLE)
+      .insert({ parcel_id: parcelId, author, message })
+      .then(() => fetchCommentsFromSupabase(parcelId))
+      .catch(() => {});
+  }
+}
+
+function formatCommentDate(value) {
+  if (!value) return '';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleString('fr', { dateStyle: 'short', timeStyle: 'short' });
+}
+
+function renderCommentsHtml(parcelId) {
+  const feedback = getParcelFeedback(parcelId);
+  const comments = feedback.comments || [];
+  if (!comments.length) {
+    return '<div class="popup-comment-empty">Aucun commentaire pour le moment.</div>';
+  }
+  return comments.map(comment => `
+    <div class="popup-comment-item">
+      <div class="popup-comment-head">
+        <span class="popup-comment-author">${comment.author || 'Anonyme'}</span>
+        <span class="popup-comment-date">${formatCommentDate(comment.createdAt)}</span>
+      </div>
+      <div class="popup-comment-text">${comment.message}</div>
+    </div>
+  `).join('');
+}
+
+function updateCommentsUI(parcelId) {
+  const domId = makeDomId(parcelId);
+  const listEl = document.getElementById(`comments-${domId}`);
+  if (listEl) {
+    listEl.innerHTML = renderCommentsHtml(parcelId);
+  }
 }
 
 function updateFeedbackUI(parcelId) {
@@ -172,6 +257,7 @@ function updateFeedbackUI(parcelId) {
     const val = btn.getAttribute('data-status');
     btn.classList.toggle('active', val === feedback.status);
   });
+  if (showValidatedOnly) applyFilters();
 }
 
 // ── Carte ─────────────────────────────────────────────────────────────────
@@ -272,6 +358,14 @@ document.getElementById('area-slider').addEventListener('input', function() {
   applyFilters();
 });
 
+const validatedOnlyEl = document.getElementById('validated-only');
+if (validatedOnlyEl) {
+  validatedOnlyEl.addEventListener('change', () => {
+    showValidatedOnly = validatedOnlyEl.checked;
+    applyFilters();
+  });
+}
+
 // ── Filtrage ──────────────────────────────────────────────────────────────
 function getFiltered() {
   return allFeatures.filter(f => {
@@ -281,6 +375,10 @@ function getFiltered() {
       if (!selectedCommunes.has(c)) return false;
     }
     if (minAreaHa > 0 && (p.prairie_m2 || 0) < minAreaHa * 10000) return false;
+    if (showValidatedOnly) {
+      const parcelId = getParcelId(f);
+      if (getLocalFeedbackStatus(parcelId) !== 'yes') return false;
+    }
     return true;
   });
 }
@@ -322,6 +420,8 @@ function resetFilters() {
   document.getElementById('area-slider').value = 0;
   minAreaHa = 0;
   document.getElementById('area-value').textContent = '0 m²';
+  if (validatedOnlyEl) validatedOnlyEl.checked = false;
+  showValidatedOnly = false;
   // Réinitialise communes → Marseille
   selectedCommunes.clear();
   allCommunes.forEach(name => {
@@ -393,8 +493,12 @@ function buildPopup(feature) {
           <button class="popup-feedback-btn ${feedback.status === 'no' ? 'active' : ''}" data-feedback-id="${domId}" data-status="no" onclick="setParcelStatus('${parcelIdEsc}', 'no')">🚫 Non</button>
           <button class="popup-feedback-btn ${feedback.status === 'unknown' ? 'active' : ''}" data-feedback-id="${domId}" data-status="unknown" onclick="setParcelStatus('${parcelIdEsc}', 'unknown')">⏺️ Indécis</button>
         </div>
-        <textarea id="comment-${domId}" class="popup-feedback-text" rows="3" placeholder="Commentaire (terrain, accès, clôture…)">${feedback.comment || ''}</textarea>
-        <button class="popup-feedback-save" onclick="saveParcelComment('${parcelIdEsc}')">💾 Enregistrer</button>
+        <div class="popup-comment-list" id="comments-${domId}">${renderCommentsHtml(parcelId)}</div>
+        <div class="popup-comment-form">
+          <input id="commenter-${domId}" class="popup-comment-input" placeholder="Nom du contributeur" />
+          <textarea id="comment-${domId}" class="popup-feedback-text" rows="3" placeholder="Commentaire (terrain, accès, clôture…)"></textarea>
+          <button class="popup-feedback-save" onclick="addParcelComment('${parcelIdEsc}')">� Ajouter</button>
+        </div>
       </div>
     </div>
     ${links ? `<div class="popup-footer">${links}</div>` : ''}`;

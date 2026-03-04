@@ -98,15 +98,41 @@ Obtenir une clé gratuite sur [openrouteservice.org](https://openrouteservice.or
 
 ### 3b. (Optionnel) Activer les avis contributeurs via Supabase
 
-Créer un projet Supabase, puis ajouter une table `parcel_feedback` :
+Créer un projet Supabase, puis ajouter ces tables :
 
 ```sql
 create table if not exists parcel_feedback (
       parcel_id text primary key,
       status text default 'unknown',
-      comment text default '',
       updated_at timestamptz default now()
 );
+
+create table if not exists parcel_comments (
+      id uuid primary key default gen_random_uuid(),
+      parcel_id text not null,
+      author text default 'Anonyme',
+      message text not null,
+      created_at timestamptz default now()
+);
+
+-- (Optionnel) RLS simple pour autoriser lecture/écriture publique
+alter table parcel_feedback enable row level security;
+alter table parcel_comments enable row level security;
+
+create policy "public read feedback" on parcel_feedback
+      for select using (true);
+
+create policy "public upsert feedback" on parcel_feedback
+      for insert with check (true);
+
+create policy "public update feedback" on parcel_feedback
+      for update using (true);
+
+create policy "public read comments" on parcel_comments
+      for select using (true);
+
+create policy "public insert comments" on parcel_comments
+      for insert with check (true);
 ```
 
 Puis ajouter dans `.env` :

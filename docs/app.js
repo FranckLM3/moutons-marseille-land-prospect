@@ -3,10 +3,12 @@ const DATA_FILE    = 'pasture_zones.geojson';
 const OCS_FILE     = 'ocs_ge_pasture.geojson';
 // IGN WMTS public (pas de clé API requise, fonctionne depuis GitHub Pages)
 // Note : wms-r/wms retourne 400 avec Origin cross-site (Kong API key requis)
+// Couche : OCSGE.COUVERTURE.2021-2023 (millésime récent, couvre le dep. 13)
+// TileMatrixSet PM_6_16 : zoom 6–16 (GetCapabilities geopf.fr)
 const IGN_WMTS_URL = 'https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0'
-  + '&LAYER=OCSGE.COUVERTURE&STYLE=normal&TILEMATRIXSET=PM'
+  + '&LAYER=OCSGE.COUVERTURE.2021-2023&STYLE=normal&TILEMATRIXSET=PM_6_16'
   + '&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&FORMAT=image/png';
-const IGN_OCS_LAYER = 'OCSGE.COUVERTURE';
+const IGN_OCS_LAYER = 'OCSGE.COUVERTURE.2021-2023';
 const DEFAULT_FILTER = 'Marseille'; // pré-sélectionne toutes les communes contenant ce mot
 
 // Couleur selon % prairie (0=gris foncé → gris clair → vert clair → vert vif)
@@ -448,8 +450,8 @@ function showOcsLayer() {
         attribution: '© IGN',
         opacity: 0.7,
         crossOrigin: 'anonymous',
-        minZoom: 10,
-        maxZoom: 19,
+        minZoom: 6,
+        maxZoom: 16,
       });
     }
     map.addLayer(ocsWmsLayer);

@@ -176,11 +176,12 @@ def load_cadastre(cadastre_dir: str | Path) -> gpd.GeoDataFrame:
 def join_owners_to_cadastre(
     cadastre: gpd.GeoDataFrame,
     owners: gpd.GeoDataFrame,
+    include_without_owner: bool = False,
 ) -> gpd.GeoDataFrame:
     """Jointure des propriétaires (points) sur les parcelles cadastrales.
 
-    Utilise une jointure spatiale point-dans-polygone : seules les parcelles
-    contenant au moins un point propriétaire sont conservées.
+    Utilise une jointure spatiale point-dans-polygone. Par défaut, seules les
+    parcelles contenant au moins un point propriétaire sont conservées.
 
     Parameters
     ----------
@@ -202,7 +203,8 @@ def join_owners_to_cadastre(
     owner_cols = [c for c in ["denomination", "siren", "nom_commune"] if c in owners.columns]
 
     print(f"  → jointure point-dans-polygone ({len(cadastre):,} parcelles × {len(owners):,} propriétaires)…")
-    result = gpd.sjoin(cadastre, owners[owner_cols + ["geometry"]], how="inner", predicate="contains")
+    join_mode = "left" if include_without_owner else "inner"
+    result = gpd.sjoin(cadastre, owners[owner_cols + ["geometry"]], how=join_mode, predicate="contains")
 
     if "index_right" in result.columns:
         result = result.drop(columns=["index_right"])
@@ -212,7 +214,11 @@ def join_owners_to_cadastre(
     id_col = "id" if "id" in result.columns else result.columns[0]
     result = result.drop_duplicates(subset=[id_col])
 
-    print(f"  → {len(result):,} parcelles avec propriétaire identifié")
+    if include_without_owner:
+        count_with_owner = result["denomination"].notna().sum() if "denomination" in result.columns else 0
+        print(f"  → {len(result):,} parcelles, dont {count_with_owner:,} avec propriétaire identifié")
+    else:
+        print(f"  → {len(result):,} parcelles avec propriétaire identifié")
     return result
 
 

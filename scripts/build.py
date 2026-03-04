@@ -69,6 +69,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-area", type=float, default=None)
     parser.add_argument("--min-prairie", type=float, default=0.0,
                         help="pct prairie minimum (0-100, defaut : 0 = pas de filtre)")
+    parser.add_argument("--include-without-owner", action="store_true",
+                        help="Conserve les parcelles sans propriétaire (jointure gauche)")
     parser.add_argument("--inject-only", action="store_true",
                         help="Génère uniquement docs/index.html depuis le template (sans pipeline géospatial)")
     return parser.parse_args()
@@ -109,7 +111,11 @@ def run(args: argparse.Namespace) -> None:
     cadastre = filter_by_area(cadastre, min_area_m2=args.min_area, max_area_m2=args.max_area)
 
     owners = load_owners(args.owners)
-    cadastre = join_owners_to_cadastre(cadastre, owners)
+    cadastre = join_owners_to_cadastre(
+        cadastre,
+        owners,
+        include_without_owner=args.include_without_owner,
+    )
 
     if len(cadastre) == 0:
         print("❌ Aucune parcelle avec propriétaire identifié.")

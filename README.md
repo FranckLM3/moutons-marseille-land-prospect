@@ -172,6 +172,7 @@ Options disponibles :
 --min-area M2       Surface minimale en m² (défaut: 5000)
 --max-area M2       Surface maximale en m² (optionnel)
 --min-prairie PCT   % prairie minimum 0–100 (défaut: 0)
+--include-without-owner  Inclure les parcelles sans propriétaire
 --inject-only       Génère uniquement docs/index.html depuis le template
 ```
 

@@ -31,7 +31,7 @@ let allFeatures      = [];
 let currentLayer     = null;
 let selectedCommunes = new Set(); // multiselect Set — rempli par buildCommuneChips()
 let allCommunes      = [];        // liste triée complète
-let minAreaHa        = 0;         // surface pâturable min en ha (0 = pas de filtre)
+let minAreaHa        = 0.5;       // surface pâturable min en ha (défaut 5 000 m²)
 let showValidatedOnly = false;    // filtre sur parcelles validées par contributeurs
 
 // ── Avis contributeurs (localStorage) ───────────────────────────────────
@@ -273,7 +273,7 @@ const satellite = L.tileLayer(
   'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
   { attribution: '© Esri', maxZoom: 19 }
 );
-osmLayer.addTo(map);
+satellite.addTo(map);
 L.control.layers({ 'Carte': osmLayer, 'Satellite': satellite }, {}, { position: 'bottomright' }).addTo(map);
 
 // ── Chargement ────────────────────────────────────────────────────────────
@@ -417,9 +417,9 @@ function applyFilters() {
 // ── Réinitialisation ──────────────────────────────────────────────────────
 function resetFilters() {
   // Réinitialise surface pâturable
-  document.getElementById('area-slider').value = 0;
-  minAreaHa = 0;
-  document.getElementById('area-value').textContent = '0 m²';
+  document.getElementById('area-slider').value = 5000;
+  minAreaHa = 0.5;
+  document.getElementById('area-value').textContent = '5 000 m²';
   if (validatedOnlyEl) validatedOnlyEl.checked = false;
   showValidatedOnly = false;
   // Réinitialise communes → Marseille

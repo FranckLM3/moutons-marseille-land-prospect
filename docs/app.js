@@ -569,8 +569,8 @@ function updateOcsLayerVisibility() {
 function updateLegendFromWms() {
   if (!ocsLegendList) return;
   if (!hasIgnWmtsConfig()) return;
-  // Le WMTS ne supporte pas GetLegendGraphic — on utilise la légende statique IGN
-  const legendUrl = `https://data.geopf.fr/annexes/ressources/legendes/OCSGE_COUVERTURE.png`;
+  // URL de légende issue du GetCapabilities WMTS
+  const legendUrl = `https://data.geopf.fr/annexes/ressources/legendes/OCSGE.COUVERTURE-legend.png`;
   ocsLegendList.innerHTML = `
     <div class="ocs-legend-row">
       <img class="ocs-legend-image" src="${legendUrl}" alt="Légende OCS GE couverture"

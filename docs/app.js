@@ -497,7 +497,7 @@ function buildPopup(feature) {
         <div class="popup-comment-form">
           <input id="commenter-${domId}" class="popup-comment-input" placeholder="Nom du contributeur" />
           <textarea id="comment-${domId}" class="popup-feedback-text" rows="3" placeholder="Commentaire (terrain, accès, clôture…)"></textarea>
-          <button class="popup-feedback-save" onclick="addParcelComment('${parcelIdEsc}')">� Ajouter</button>
+        <button class="popup-feedback-save" onclick="addParcelComment('${parcelIdEsc}')">Ajouter</button>
         </div>
       </div>
     </div>

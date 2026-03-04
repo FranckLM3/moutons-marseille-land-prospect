@@ -20,6 +20,44 @@
 
 <div id="map"></div>
 
+<button id="map-info-btn" aria-label="Afficher les informations sur les données">ℹ️</button>
+<div id="map-info-overlay" aria-hidden="true"></div>
+<div id="map-info-modal" role="dialog" aria-modal="true" aria-labelledby="map-info-title" aria-hidden="true">
+  <div class="map-info-header">
+    <h3 id="map-info-title">ℹ️ Données & périmètre</h3>
+    <button id="map-info-close" aria-label="Fermer">✕</button>
+  </div>
+  <div class="map-info-body">
+    <p>
+      Cette carte affiche les parcelles cadastrales de la métropole AMP et calcule la
+      part de prairie à partir de l'OCS GE.
+    </p>
+    <h4>OCS GE conservé (considéré comme pâturable)</h4>
+    <ul>
+      <li><strong>CS2.2.1</strong> — Formations herbacées (prairies)</li>
+      <li><strong>CS2.1.2</strong> — Landes et maquis</li>
+      <li><strong>CS2.1.1.1</strong> — Peuplement de feuillus</li>
+      <li><strong>CS2.1.1.3</strong> — Peuplement mixte</li>
+      <li><strong>CS2.2.2</strong> — Autres formations non ligneuses</li>
+    </ul>
+    <h4>Sources</h4>
+    <ul>
+      <li><strong>Cadastre Etalab</strong> — parcelles communales AMP (cadastre.data.gouv.fr)</li>
+      <li><strong>OCS GE IGN 2023 (D13)</strong> — occupation du sol</li>
+      <li><strong>Parcelles personnes morales</strong> — Koumoul OpenData</li>
+    </ul>
+    <h4>Légende OCS GE (aperçu)</h4>
+    <div class="ocs-legend">
+      <div class="ocs-legend-row"><span class="ocs-swatch ocs-cs221"></span> CS2.2.1 — Formations herbacées</div>
+      <div class="ocs-legend-row"><span class="ocs-swatch ocs-cs212"></span> CS2.1.2 — Landes et maquis</div>
+      <div class="ocs-legend-row"><span class="ocs-swatch ocs-cs2111"></span> CS2.1.1.1 — Feuillus</div>
+      <div class="ocs-legend-row"><span class="ocs-swatch ocs-cs2113"></span> CS2.1.1.3 — Mixte</div>
+      <div class="ocs-legend-row"><span class="ocs-swatch ocs-cs222"></span> CS2.2.2 — Autres non ligneuses</div>
+    </div>
+    <p class="map-info-note">Astuce : vous pouvez filtrer par commune et surface dans le panneau de gauche.</p>
+  </div>
+</div>
+
 <button id="mobile-toggle" aria-label="Ouvrir les filtres">☰ Filtres</button>
 <div id="sidebar-overlay"></div>
 
@@ -90,6 +128,13 @@
           <label class="filter-inline">
             <input type="checkbox" id="include-missing-prairie" />
             Inclure les parcelles sans donnée prairie
+          </label>
+        </div>
+
+        <div class="filter-section">
+          <label class="filter-inline">
+            <input type="checkbox" id="toggle-ocs" />
+            Afficher l'OCS GE complet
           </label>
         </div>
 

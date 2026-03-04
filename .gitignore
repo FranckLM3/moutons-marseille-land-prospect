@@ -3,6 +3,7 @@
 
 # ── Généré (ne pas versionner, contient la clé ORS injectée) ──────────────
 docs/index.html
+docs/ocs_ge_pasture.geojson
 
 # ── Python ────────────────────────────────────────────────────────────────
 __pycache__/

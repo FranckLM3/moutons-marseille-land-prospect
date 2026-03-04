@@ -1,5 +1,6 @@
 // ── Config ────────────────────────────────────────────────────────────────
 const DATA_FILE    = 'pasture_zones.geojson';
+const OCS_FILE     = 'ocs_ge_pasture.geojson';
 const DEFAULT_FILTER = 'Marseille'; // pré-sélectionne toutes les communes contenant ce mot
 
 // Couleur selon % prairie (0=gris foncé → gris clair → vert clair → vert vif)
@@ -35,6 +36,8 @@ let minAreaHa        = 0.5;       // surface pâturable min en ha (défaut 5 000
 let showValidatedOnly = false;    // filtre sur parcelles validées par contributeurs
 let showOwnerKnownOnly = false;   // filtre sur parcelles avec propriétaire connu
 let includeMissingPrairie = false; // inclure parcelles sans données prairie
+let ocsLayer = null;
+let ocsLoaded = false;
 
 // ── Avis contributeurs (localStorage) ───────────────────────────────────
 const FEEDBACK_STORAGE_KEY = 'parcel-feedback-v1';
@@ -384,6 +387,64 @@ if (includeMissingPrairieEl) {
   });
 }
 
+const toggleOcsEl = document.getElementById('toggle-ocs');
+if (toggleOcsEl) {
+  toggleOcsEl.addEventListener('change', () => {
+    if (toggleOcsEl.checked) {
+      showOcsLayer();
+    } else {
+      hideOcsLayer();
+    }
+  });
+}
+
+function showOcsLayer() {
+  if (ocsLayer) {
+    map.addLayer(ocsLayer);
+    return;
+  }
+  if (ocsLoaded) return;
+  ocsLoaded = true;
+  fetch(OCS_FILE)
+    .then(r => {
+      if (!r.ok) throw new Error(`Fichier ${OCS_FILE} introuvable (HTTP ${r.status})`);
+      return r.json();
+    })
+    .then(data => {
+      ocsLayer = L.geoJSON(data, {
+        style: feature => {
+          const code = String(feature?.properties?.code_cs || '').toUpperCase();
+          let color = '#64748b';
+          if (code.startsWith('CS2.2.1')) color = '#22c55e';
+          else if (code.startsWith('CS2.1.2')) color = '#84cc16';
+          else if (code.startsWith('CS2.1.1.1')) color = '#38bdf8';
+          else if (code.startsWith('CS2.1.1.3')) color = '#0ea5e9';
+          else if (code.startsWith('CS2.2.2')) color = '#facc15';
+          return {
+            color,
+            weight: 0.5,
+            opacity: 0.65,
+            fillColor: color,
+            fillOpacity: 0.2,
+          };
+        },
+      });
+      map.addLayer(ocsLayer);
+    })
+    .catch(err => {
+      ocsLoaded = false;
+      if (toggleOcsEl) toggleOcsEl.checked = false;
+      console.warn(err.message);
+      alert('Impossible de charger la couche OCS GE pâturable.');
+    });
+}
+
+function hideOcsLayer() {
+  if (ocsLayer && map.hasLayer(ocsLayer)) {
+    map.removeLayer(ocsLayer);
+  }
+}
+
 function hasKnownOwner(props) {
   if (!props) return false;
   const denom = (props.denomination || '').trim();
@@ -577,6 +638,35 @@ if (mobileToggle) {
 overlayEl && overlayEl.addEventListener('click', closeSidebar);
 map.on('click', () => {
   if (window.innerWidth <= 768) closeSidebar();
+});
+
+// ── Info modal ──────────────────────────────────────────────────────────
+const infoBtn = document.getElementById('map-info-btn');
+const infoOverlay = document.getElementById('map-info-overlay');
+const infoModal = document.getElementById('map-info-modal');
+const infoClose = document.getElementById('map-info-close');
+
+function openInfoModal() {
+  if (!infoModal || !infoOverlay) return;
+  infoModal.classList.add('active');
+  infoOverlay.classList.add('active');
+  infoModal.setAttribute('aria-hidden', 'false');
+  infoOverlay.setAttribute('aria-hidden', 'false');
+}
+
+function closeInfoModal() {
+  if (!infoModal || !infoOverlay) return;
+  infoModal.classList.remove('active');
+  infoOverlay.classList.remove('active');
+  infoModal.setAttribute('aria-hidden', 'true');
+  infoOverlay.setAttribute('aria-hidden', 'true');
+}
+
+if (infoBtn) infoBtn.addEventListener('click', openInfoModal);
+if (infoClose) infoClose.addEventListener('click', closeInfoModal);
+if (infoOverlay) infoOverlay.addEventListener('click', closeInfoModal);
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') closeInfoModal();
 });
 
 // ── Itinéraire ────────────────────────────────────────────────────────────

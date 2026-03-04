@@ -510,6 +510,37 @@ function switchTab(tab) {
   document.querySelectorAll('.sidebar-pane').forEach(p => p.classList.toggle('active', p.id === 'pane-' + tab));
 }
 
+// ── Mobile sidebar toggle ───────────────────────────────────────────────
+const sidebarEl = document.getElementById('sidebar');
+const overlayEl = document.getElementById('sidebar-overlay');
+const mobileToggle = document.getElementById('mobile-toggle');
+
+function closeSidebar() {
+  if (!sidebarEl) return;
+  sidebarEl.classList.remove('open');
+  overlayEl && overlayEl.classList.remove('active');
+}
+
+function openSidebar() {
+  if (!sidebarEl) return;
+  sidebarEl.classList.add('open');
+  overlayEl && overlayEl.classList.add('active');
+}
+
+if (mobileToggle) {
+  mobileToggle.addEventListener('click', () => {
+    if (sidebarEl && sidebarEl.classList.contains('open')) {
+      closeSidebar();
+    } else {
+      openSidebar();
+    }
+  });
+}
+overlayEl && overlayEl.addEventListener('click', closeSidebar);
+map.on('click', () => {
+  if (window.innerWidth <= 768) closeSidebar();
+});
+
 // ── Itinéraire ────────────────────────────────────────────────────────────
 let routeLayer        = null;
 let routeParcelsLayer = null;

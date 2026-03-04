@@ -1,8 +1,11 @@
 // ── Config ────────────────────────────────────────────────────────────────
 const DATA_FILE    = 'pasture_zones.geojson';
 const OCS_FILE     = 'ocs_ge_pasture.geojson';
-// IGN WMS (laisser vide pour utiliser le GeoJSON local)
-const IGN_WMS_URL = 'https://data.geopf.fr/wms-r/wms';
+// IGN WMTS public (pas de clé API requise, fonctionne depuis GitHub Pages)
+// Note : wms-r/wms retourne 400 avec Origin cross-site (Kong API key requis)
+const IGN_WMTS_URL = 'https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0'
+  + '&LAYER=OCSGE.COUVERTURE&STYLE=normal&TILEMATRIXSET=PM'
+  + '&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&FORMAT=image/png';
 const IGN_OCS_LAYER = 'OCSGE.COUVERTURE';
 const DEFAULT_FILTER = 'Marseille'; // pré-sélectionne toutes les communes contenant ce mot
 
@@ -439,14 +442,14 @@ if (toggleOcsEl) {
 }
 
 function showOcsLayer() {
-  if (hasIgnWmsConfig()) {
+  if (hasIgnWmtsConfig()) {
     if (!ocsWmsLayer) {
-      ocsWmsLayer = L.tileLayer.wms(IGN_WMS_URL, {
-        layers: IGN_OCS_LAYER,
-        format: 'image/png',
-        transparent: true,
+      ocsWmsLayer = L.tileLayer(IGN_WMTS_URL, {
         attribution: '© IGN',
+        opacity: 0.7,
         crossOrigin: 'anonymous',
+        minZoom: 10,
+        maxZoom: 19,
       });
     }
     map.addLayer(ocsWmsLayer);
@@ -490,8 +493,8 @@ function hideOcsLayer() {
   }
 }
 
-function hasIgnWmsConfig() {
-  return Boolean(IGN_WMS_URL && IGN_OCS_LAYER);
+function hasIgnWmtsConfig() {
+  return Boolean(IGN_WMTS_URL && IGN_OCS_LAYER);
 }
 
 function rebuildOcsLayer() {
@@ -565,11 +568,13 @@ function updateOcsLayerVisibility() {
 
 function updateLegendFromWms() {
   if (!ocsLegendList) return;
-  if (!hasIgnWmsConfig()) return;
-  const legendUrl = `${IGN_WMS_URL}?service=WMS&request=GetLegendGraphic&format=image/png&layer=${encodeURIComponent(IGN_OCS_LAYER)}`;
+  if (!hasIgnWmtsConfig()) return;
+  // Le WMTS ne supporte pas GetLegendGraphic — on utilise la légende statique IGN
+  const legendUrl = `https://data.geopf.fr/annexes/ressources/legendes/OCSGE_COUVERTURE.png`;
   ocsLegendList.innerHTML = `
     <div class="ocs-legend-row">
-      <img class="ocs-legend-image" src="${legendUrl}" alt="Légende OCS GE" />
+      <img class="ocs-legend-image" src="${legendUrl}" alt="Légende OCS GE couverture"
+           onerror="this.parentElement.textContent='Légende OCS GE — voir geoservices.ign.fr'" />
     </div>
   `;
 }

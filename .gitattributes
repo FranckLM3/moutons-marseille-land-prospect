@@ -1,2 +1,3 @@
 docs/pasture_zones.geojson filter=lfs diff=lfs merge=lfs -text
 front/mos_2022_occsol_filtered.geojson filter=lfs diff=lfs merge=lfs -text
+docs/ocs_ge_pasture.geojson filter=lfs diff=lfs merge=lfs -text

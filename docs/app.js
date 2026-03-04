@@ -569,7 +569,7 @@ function buildPopup(feature) {
     if (entries.length) {
       csRows = entries.map(([code, m2]) => {
         const label = CS_LABELS[code] || code;
-        // CS2.1.1.2 = conifères (pins) : sol pauvre, risque incendie — non comptabilisé dans pct_prairie
+        // CS2.1.1.2 = conifères (pins) : sol pauvre, risque incendie — non comptabilisé dans % pâturable
         const note = code === 'CS2.1.1.2'
           ? ' <span style="color:#f97316;font-size:0.8em">(non pâturable)</span>'
           : '';
@@ -902,7 +902,7 @@ async function computeRoute(keepSelected = false) {
       const props = p.feature.properties || {};
       const name  = props.denomination || 'Parcelle sans propriétaire';
       const comm  = props.nom_commune  || '';
-      const pct   = props.pct_prairie  != null ? `${props.pct_prairie}% prairie` : '';
+      const pct   = props.pct_prairie  != null ? `${props.pct_prairie}% pâturable` : '';
       const area  = props.prairie_m2   != null ? `${Number(props.prairie_m2).toLocaleString('fr')} m² pât.` : '';
       const fid   = (p.id || '').replace(/'/g, "\\'");
       const num   = fixedWaypoints.length + i + 1;

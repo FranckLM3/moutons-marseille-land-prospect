@@ -1,6 +1,5 @@
 // ── Config ────────────────────────────────────────────────────────────────
 const DATA_FILE    = 'pasture_zones.geojson';
-const OCS_FILE     = 'ocs_ge_pasture.geojson';
 // IGN WMTS public (pas de clé API requise, fonctionne depuis GitHub Pages)
 // Note : wms-r/wms retourne 400 avec Origin cross-site (Kong API key requis)
 // Couche : OCSGE.COUVERTURE.2021-2023 (millésime récent, couvre le dep. 13)
@@ -44,10 +43,7 @@ let minAreaHa        = 0.5;       // surface pâturable min en ha (défaut 5 000
 let showValidatedOnly = false;    // filtre sur parcelles validées par contributeurs
 let showOwnerKnownOnly = false;   // filtre sur parcelles avec propriétaire connu
 let includeMissingPrairie = false; // inclure parcelles sans données prairie
-let ocsLayer = null;
 let ocsWmsLayer = null;
-let ocsLoaded = false;
-let ocsData = null;
 
 // ── Avis contributeurs (localStorage) ───────────────────────────────────
 const FEEDBACK_STORAGE_KEY = 'parcel-feedback-v1';
@@ -450,53 +446,21 @@ if (toggleOcsEl) {
 }
 
 function showOcsLayer() {
-  if (hasIgnWmtsConfig()) {
-    if (!ocsWmsLayer) {
-      ocsWmsLayer = L.tileLayer(IGN_WMTS_URL, {
-        attribution: '© IGN',
-        opacity: 0.7,
-        crossOrigin: 'anonymous',
-        minZoom: 6,
-        maxZoom: 16,
-        pane: 'ocsPane',
-      });
-    }
-    map.addLayer(ocsWmsLayer);
-    updateLegendFromWms();
-    return;
-  }
-  if (ocsLayer && map.hasLayer(ocsLayer)) return;
-  if (ocsData) {
-    rebuildOcsLayer();
-    return;
-  }
-  if (ocsLoaded) return;
-  ocsLoaded = true;
-  fetch(OCS_FILE)
-    .then(r => {
-      if (!r.ok) throw new Error(`Fichier ${OCS_FILE} introuvable (HTTP ${r.status})`);
-      return r.json();
-    })
-    .then(data => {
-      ocsData = data;
-      buildOcsLegend();
-      rebuildOcsLayer();
-    })
-    .catch(err => {
-      ocsLoaded = false;
-      if (toggleOcsEl) toggleOcsEl.checked = false;
-      console.warn(err.message);
-      alert('Impossible de charger la couche OCS GE complète.');
-      if (ocsLegendList) {
-        ocsLegendList.textContent = "Impossible de charger la légende OCS GE.";
-      }
+  if (!ocsWmsLayer) {
+    ocsWmsLayer = L.tileLayer(IGN_WMTS_URL, {
+      attribution: '© IGN',
+      opacity: 0.7,
+      crossOrigin: 'anonymous',
+      minZoom: 6,
+      maxZoom: 16,
+      pane: 'ocsPane',
     });
+  }
+  map.addLayer(ocsWmsLayer);
+  updateLegendFromWms();
 }
 
 function hideOcsLayer() {
-  if (ocsLayer && map.hasLayer(ocsLayer)) {
-    map.removeLayer(ocsLayer);
-  }
   if (ocsWmsLayer && map.hasLayer(ocsWmsLayer)) {
     map.removeLayer(ocsWmsLayer);
   }
@@ -506,80 +470,10 @@ function hasIgnWmtsConfig() {
   return Boolean(IGN_WMTS_URL && IGN_OCS_LAYER);
 }
 
-function rebuildOcsLayer() {
-  if (!ocsData) return;
-  if (selectedCommunes.size === 0) return;
-  if (ocsLayer) map.removeLayer(ocsLayer);
-  const bounds = getSelectedCommunesBounds();
-  ocsLayer = L.geoJSON(ocsData, {
-    filter: feature => {
-      if (!bounds) return false;
-      const geomBounds = getGeometryBounds(feature.geometry);
-      return geomBounds ? bounds.intersects(geomBounds) : false;
-    },
-    style: feature => styleOcsFeature(feature),
-  });
-  map.addLayer(ocsLayer);
-}
-
-function styleOcsFeature(feature) {
-  const code = String(feature?.properties?.code_cs || '').toUpperCase();
-  const color = getOcsColor(code);
-  return {
-    color,
-    weight: 0.5,
-    opacity: 0.65,
-    fillColor: color,
-    fillOpacity: 0.2,
-  };
-}
-
-function getOcsColor(code) {
-  if (!code) return '#64748b';
-  if (code.startsWith('CS2.2.1')) return '#22c55e';
-  if (code.startsWith('CS2.1.2')) return '#84cc16';
-  if (code.startsWith('CS2.1.1.1')) return '#38bdf8';
-  if (code.startsWith('CS2.1.1.3')) return '#0ea5e9';
-  if (code.startsWith('CS2.2.2')) return '#facc15';
-  return '#64748b';
-}
-
-function buildOcsLegend() {
-  if (!ocsLegendList) return;
-  if (hasIgnWmsConfig()) return;
-  if (!ocsData || !Array.isArray(ocsData.features)) {
-    ocsLegendList.textContent = "Aucune donnée OCS GE disponible.";
-    return;
-  }
-  const codes = new Set();
-  ocsData.features.forEach(feature => {
-    const code = String(feature?.properties?.code_cs || '').toUpperCase();
-    if (code) codes.add(code);
-  });
-  const sorted = [...codes].sort((a, b) => a.localeCompare(b, 'fr'));
-  if (!sorted.length) {
-    ocsLegendList.textContent = "Aucune classe OCS GE trouvée.";
-    return;
-  }
-  ocsLegendList.innerHTML = sorted.map(code => {
-    const label = CS_LABELS[code] || code;
-    const color = getOcsColor(code);
-    return `<div class="ocs-legend-row"><span class="ocs-swatch" style="background:${color}"></span> ${code} — ${label}</div>`;
-  }).join('');
-}
-
-function updateOcsLayerVisibility() {
-  if (hasIgnWmsConfig()) return;
-  if (!toggleOcsEl || !toggleOcsEl.checked) return;
-  if (!ocsData) return;
-  rebuildOcsLayer();
-}
-
 function updateLegendFromWms() {
   if (!ocsLegendList) return;
   if (!hasIgnWmtsConfig()) return;
-  // URL de légende issue du GetCapabilities WMTS
-  const legendUrl = `https://data.geopf.fr/annexes/ressources/legendes/OCSGE.COUVERTURE-legend.png`;
+  const legendUrl = 'https://data.geopf.fr/annexes/ressources/legendes/OCSGE.COUVERTURE-legend.png';
   ocsLegendList.innerHTML = `
     <div class="ocs-legend-row">
       <img class="ocs-legend-image" src="${legendUrl}" alt="Légende OCS GE couverture"
@@ -650,8 +544,6 @@ function applyFilters() {
   document.getElementById('count-visible').textContent = filtered.length.toLocaleString('fr');
   document.getElementById('stat-ha').textContent       = totalHa.toLocaleString('fr', { maximumFractionDigits: 0 }) + ' ha';
   document.getElementById('stat-pct').textContent      = pct + '%';
-
-  updateOcsLayerVisibility();
 }
 
 // ── Réinitialisation ──────────────────────────────────────────────────────
@@ -700,7 +592,11 @@ function buildPopup(feature) {
     if (entries.length) {
       csRows = entries.map(([code, m2]) => {
         const label = CS_LABELS[code] || code;
-        return `<span class="k" style="padding-left:16px;color:#555">${label}</span><span class="v" style="color:#aaa">${Number(m2).toLocaleString('fr')} m²</span>`;
+        // CS2.1.1.2 = conifères (pins Calanques) : sol rocheux + risque feu → non pâturable
+        const warning = code === 'CS2.1.1.2'
+          ? ' <span title="Conifères (pins) : sol pauvre, risque incendie — non pâturable" style="cursor:help">⚠️</span>'
+          : '';
+        return `<span class="k" style="padding-left:16px;color:#555">${label}${warning}</span><span class="v" style="color:#aaa">${Number(m2).toLocaleString('fr')} m²</span>`;
       }).join('');
     }
   } catch(_) {}

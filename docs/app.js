@@ -959,35 +959,24 @@ async function computeRoute(keepSelected = false) {
       style: { color: '#4ade80', weight: 4, opacity: 0.85, dashArray: '8 4' }
     }).addTo(map);
 
-    // Parcelles candidates en orange — cliquables pour ajouter
+    // Parcelles candidates en orange — popup complète + bouton ajouter
     routeParcelsLayer = L.geoJSON(
       { type: 'FeatureCollection', features: candidateParcels.map(p => p.feature) },
       {
         style: { fillColor: '#fb923c', fillOpacity: 0.45, color: '#fb923c', weight: 1.5, opacity: 0.8 },
         onEachFeature: (feature, layer) => {
-          const fid = feature.properties?.id || '';
+          const fid    = feature.properties?.id || '';
+          const fidEsc = fid.replace(/'/g, "\\'");
           layer.bindPopup(() => {
-            const p = feature.properties || {};
-            const name     = p.denomination || '<em>Propriétaire inconnu</em>';
-            const commune  = p.nom_commune  || '—';
-            const totalM2  = p.area_m2    != null ? `${Number(p.area_m2).toLocaleString('fr')} m²` : '—';
-            const pratM2   = p.prairie_m2 != null ? `${Number(p.prairie_m2).toLocaleString('fr')} m²` : '0 m²';
-            const pct      = p.pct_prairie != null ? `${p.pct_prairie} %` : '0 %';
-            const fidEsc   = fid.replace(/'/g, "\\'");
-            return `<div style="min-width:210px">
-              <div style="font-weight:700;font-size:13px;margin-bottom:4px">${name}</div>
-              <div style="font-size:11px;color:#555;margin-bottom:8px">${commune}</div>
-              <table style="font-size:11px;width:100%;border-collapse:collapse">
-                <tr><td style="color:#888;padding:2px 4px 2px 0">Surface totale</td><td style="font-weight:600">${totalM2}</td></tr>
-                <tr><td style="color:#888;padding:2px 4px 2px 0">Surface pâturable</td><td style="font-weight:600">${pratM2}</td></tr>
-                <tr><td style="color:#888;padding:2px 4px 2px 0">% pâturable</td><td style="font-weight:600">${pct}</td></tr>
-              </table>
+            const fidEsc = fid.replace(/'/g, "\\'");
+            const btn = `<div style="padding:0 0 6px">
               <button onclick="addParcelToRoute('${fidEsc}')"
-                style="margin-top:10px;width:100%;padding:7px 0;background:#fb923c;color:#111;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer">
+                style="width:100%;padding:8px 0;background:#fb923c;color:#111;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer">
                 ➕ Ajouter à l'itinéraire
               </button>
             </div>`;
-          }, { maxWidth: 280, minWidth: 230 });
+            return btn + buildPopup(feature);
+          }, { maxWidth: 340, minWidth: 280 });
           layer.on('mouseover', function() { this.setStyle({ fillOpacity: 0.75, weight: 2.5 }); });
           layer.on('mouseout',  function() { routeParcelsLayer && routeParcelsLayer.resetStyle(this); });
         },

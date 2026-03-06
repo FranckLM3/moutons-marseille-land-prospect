@@ -291,44 +291,130 @@ satellite.addTo(map);
 L.control.layers({ 'Carte': osmLayer, 'Satellite': satellite }, {}, { position: 'bottomright' }).addTo(map);
 
 // ── Chargement ────────────────────────────────────────────────────────────
-fetch(DATA_FILE)
-  .then(r => {
-    if (!r.ok) throw new Error(`Fichier ${DATA_FILE} introuvable (HTTP ${r.status})`);
-    return r.json();
-  })
-  .then(data => {
-    document.getElementById('loading').style.display = 'none';
-    allFeatures = data.features || [];
+// Mode Supabase : les données sont chargées à la demande par commune via RPC
+// Mode fallback : chargement du GeoJSON local (dev / données limitées)
+const USE_SUPABASE_DATA = true; // passer à false pour revenir au GeoJSON local
 
-    buildCommuneChips();
-    applyFilters();
-  })
-  .catch(err => {
-    document.getElementById('loading').innerHTML = `
-      <div style="color:#f87171;font-size:20px;">⚠️</div>
-      <p style="color:#666;max-width:320px;text-align:center;line-height:1.6">
-        ${err.message}<br><br>
-        Générez d'abord les données :<br>
-        <code style="color:#4ade80">python scripts/build.py</code>
-      </p>`;
-  });
+// Cache des features déjà chargées par commune (évite les double-fetch)
+const communeCache = {};  // { nomCommune: [feature, ...] }
+
+async function fetchParcellesByCommunes(communes) {
+  if (!supabaseEnabled()) return [];
+  const toFetch = communes.filter(c => !(c in communeCache));
+  if (toFetch.length > 0) {
+    try {
+      const { data, error } = await supabaseClient.rpc('parcelles_by_communes', {
+        communes:    toFetch,
+        min_prairie: 0,
+      });
+      if (error) throw new Error(error.message);
+      // Regrouper par commune et convertir en features GeoJSON
+      toFetch.forEach(c => { communeCache[c] = []; });
+      (data || []).forEach(row => {
+        const { geojson, ...props } = row;
+        const feature = {
+          type: 'Feature',
+          geometry: JSON.parse(geojson),
+          properties: { ...props, cs_detail: props.cs_detail },
+        };
+        communeCache[row.nom_commune] = communeCache[row.nom_commune] || [];
+        communeCache[row.nom_commune].push(feature);
+      });
+    } catch (err) {
+      console.error('fetchParcellesByCommunes error:', err);
+    }
+  }
+  // Retourner toutes les features des communes demandées
+  return communes.flatMap(c => communeCache[c] || []);
+}
+
+async function loadCommuneList() {
+  // Charge la liste des communes disponibles sans charger les géométries
+  if (!supabaseEnabled()) return [];
+  const { data, error } = await supabaseClient
+    .from('parcelles')
+    .select('nom_commune')
+    .order('nom_commune');
+  if (error) { console.error(error); return []; }
+  const seen = new Set();
+  return (data || []).map(r => r.nom_commune).filter(c => c && seen.has(c) ? false : (seen.add(c), true));
+}
+
+async function initData() {
+  document.getElementById('loading').style.display = 'flex';
+
+  if (USE_SUPABASE_DATA && supabaseEnabled()) {
+    // ── Mode Supabase ──────────────────────────────────────────────────
+    try {
+      allCommunes = await loadCommuneList();
+      if (!allCommunes.length) throw new Error('Aucune commune trouvée dans Supabase');
+
+      // Pré-sélectionner communes Marseille
+      allCommunes.forEach(name => {
+        if (name.toLowerCase().includes(DEFAULT_FILTER.toLowerCase())) selectedCommunes.add(name);
+      });
+
+      // Charger les features des communes sélectionnées
+      allFeatures = await fetchParcellesByCommunes([...selectedCommunes]);
+
+      document.getElementById('loading').style.display = 'none';
+      buildCommuneChips(true); // true = liste déjà chargée, ne pas re-extraire
+      applyFilters();
+    } catch (err) {
+      console.warn('Supabase indisponible, fallback GeoJSON :', err.message);
+      loadGeoJSON(); // fallback
+    }
+  } else {
+    loadGeoJSON();
+  }
+}
+
+function loadGeoJSON() {
+  fetch(DATA_FILE)
+    .then(r => {
+      if (!r.ok) throw new Error(`Fichier ${DATA_FILE} introuvable (HTTP ${r.status})`);
+      return r.json();
+    })
+    .then(data => {
+      document.getElementById('loading').style.display = 'none';
+      allFeatures = data.features || [];
+      buildCommuneChips();
+      applyFilters();
+    })
+    .catch(err => {
+      document.getElementById('loading').innerHTML = `
+        <div style="color:#f87171;font-size:20px;">⚠️</div>
+        <p style="color:#666;max-width:320px;text-align:center;line-height:1.6">
+          ${err.message}<br><br>
+          Générez d'abord les données :<br>
+          <code style="color:#4ade80">python scripts/build.py</code>
+        </p>`;
+    });
+}
+
+// ── Démarrage ─────────────────────────────────────────────────────────────
+initData();
 
 // ── Chips communes (multiselect) ──────────────────────────────────────────
 let showAllCommunes = false; // false = n'affiche que les actives (+ résultats recherche)
 
-function buildCommuneChips() {
+function buildCommuneChips(skipExtract = false) {
   const container = document.getElementById('commune-chips');
-  const seen = new Set();
-  allFeatures.forEach(f => {
-    const c = (f.properties?.nom_commune || '').trim();
-    if (c && c !== 'null' && c !== 'None') seen.add(c);
-  });
-  allCommunes = [...seen].sort((a, b) => a.localeCompare(b, 'fr'));
 
-  // Pré-sélectionner toutes les communes dont le nom contient DEFAULT_FILTER
-  allCommunes.forEach(name => {
-    if (name.toLowerCase().includes(DEFAULT_FILTER.toLowerCase())) selectedCommunes.add(name);
-  });
+  if (!skipExtract) {
+    // Mode GeoJSON : extraire les communes depuis allFeatures
+    const seen = new Set();
+    allFeatures.forEach(f => {
+      const c = (f.properties?.nom_commune || '').trim();
+      if (c && c !== 'null' && c !== 'None') seen.add(c);
+    });
+    allCommunes = [...seen].sort((a, b) => a.localeCompare(b, 'fr'));
+    // Pré-sélectionner les communes Marseille
+    allCommunes.forEach(name => {
+      if (name.toLowerCase().includes(DEFAULT_FILTER.toLowerCase())) selectedCommunes.add(name);
+    });
+  }
+  // Mode Supabase : allCommunes et selectedCommunes déjà remplis par initData()
 
   // Actives en premier, puis inactives
   const sorted = [
@@ -342,10 +428,10 @@ function buildCommuneChips() {
     chip.className = 'comm-chip ' + (active ? 'active' : 'inactive');
     chip.dataset.commune = name;
     chip.innerHTML = `<span class="comm-dot"></span>${name}`;
-    chip.addEventListener('click', () => {
+    chip.addEventListener('click', async () => {
       selectedCommunes.has(name) ? selectedCommunes.delete(name) : selectedCommunes.add(name);
       refreshCommuneChips();
-      applyFilters();
+      await applyFilters();
     });
     container.appendChild(chip);
   });
@@ -544,7 +630,12 @@ function getFiltered() {
   });
 }
 
-function applyFilters() {
+async function applyFilters() {
+  // En mode Supabase, charger les features manquantes depuis le cache ou l'API
+  if (USE_SUPABASE_DATA && supabaseEnabled()) {
+    allFeatures = await fetchParcellesByCommunes([...selectedCommunes]);
+  }
+
   const filtered = getFiltered();
 
   if (currentLayer) map.removeLayer(currentLayer);
@@ -576,7 +667,7 @@ function applyFilters() {
 }
 
 // ── Réinitialisation ──────────────────────────────────────────────────────
-function resetFilters() {
+async function resetFilters() {
   // Réinitialise surface pâturable
   document.getElementById('area-slider').value = 5000;
   minAreaHa = 0.5;
@@ -594,7 +685,7 @@ function resetFilters() {
   const communeSearch = document.getElementById('commune-search');
   if (communeSearch) communeSearch.value = '';
   refreshCommuneChips();
-  applyFilters();
+  await applyFilters();
 }
 
 // ── Popup ─────────────────────────────────────────────────────────────────

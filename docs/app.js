@@ -661,7 +661,11 @@ async function applyFilters() {
   }).addTo(map);
 
   if (filtered.length > 0) {
-    try { map.fitBounds(currentLayer.getBounds(), { padding: [20, 20], maxZoom: 14 }); } catch(_) {}
+    // Recadrer uniquement si on est sur l'onglet filtre (pas itinéraire)
+    const activeTab = document.querySelector('.sidebar-tab.active')?.dataset?.tab;
+    if (activeTab !== 'route') {
+      try { map.fitBounds(currentLayer.getBounds(), { padding: [20, 20], maxZoom: 14 }); } catch(_) {}
+    }
   }
 
   const totalHa   = filtered.reduce((s, f) => s + (f.properties?.prairie_m2 || 0), 0) / 10000;
@@ -787,8 +791,10 @@ function buildPopup(feature) {
 function switchTab(tab) {
   document.querySelectorAll('.sidebar-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
   document.querySelectorAll('.sidebar-pane').forEach(p => p.classList.toggle('active', p.id === 'pane-' + tab));
-  // Recadre la carte sur la sélection courante à chaque changement d'onglet
-  if (currentLayer) {
+  // Recadre sur la bonne couche selon l'onglet actif
+  if (tab === 'route' && routeLayer) {
+    try { map.fitBounds(routeLayer.getBounds(), { padding: [30, 30] }); } catch(_) {}
+  } else if (tab === 'filters' && currentLayer) {
     try { map.fitBounds(currentLayer.getBounds(), { padding: [20, 20], maxZoom: 14 }); } catch(_) {}
   }
 }
@@ -1021,22 +1027,25 @@ async function computeRoute(keepSelected = false) {
     routeCoords = baseData.features[0].geometry.coordinates.map(([lng, lat]) => ({ lat, lng }));
 
     // 3. Parcelles candidates dans le corridor autour du tracé réel
-    // Requête Supabase sur toute la PACA via ST_DWithin (pas seulement les communes filtrées)
-    setRouteStatus('Recherche des parcelles sur le trajet…', '');
-    const routeLineGeoJSON = JSON.stringify(baseData.features[0].geometry);
-    const { data: corridorRows, error: corridorErr } = await supabaseClient.rpc(
-      'parcelles_dans_corridor',
-      { route_geojson: routeLineGeoJSON, radius_km: radiusKm, min_prairie: minArea }
-    );
-    if (corridorErr) throw new Error('Corridor Supabase : ' + corridorErr.message);
+    // Si recalcul après ajout d'une étape, on réutilise le corridor déjà chargé (évite timeout RPC)
+    if (!keepSelected) {
+      setRouteStatus('Recherche des parcelles sur le trajet…', '');
+      const routeLineGeoJSON = JSON.stringify(baseData.features[0].geometry);
+      const { data: corridorRows, error: corridorErr } = await supabaseClient.rpc(
+        'parcelles_dans_corridor',
+        { route_geojson: routeLineGeoJSON, radius_km: radiusKm, min_prairie: minArea }
+      );
+      if (corridorErr) throw new Error('Corridor Supabase : ' + corridorErr.message);
 
-    candidateParcels = (corridorRows || [])
-      .filter(row => !selectedIds.has(row.id || ''))
-      .map(row => {
-        const feature = { type: 'Feature', properties: row, geometry: JSON.parse(row.geojson) };
-        return { feature, center: centroid(feature), id: row.id || '' };
-      })
-      .filter(p => p.center !== null);
+      candidateParcels = (corridorRows || [])
+        .map(row => {
+          const feature = { type: 'Feature', properties: row, geometry: JSON.parse(row.geojson) };
+          return { feature, center: centroid(feature), id: row.id || '' };
+        })
+        .filter(p => p.center !== null);
+    }
+    // Exclure les parcelles déjà sélectionnées de l'affichage candidat
+    const displayCandidates = candidateParcels.filter(p => !selectedIds.has(p.id));
 
     // 4. Waypoints finaux : A → étapes fixes → parcelles sélectionnées ordonnées → B
     const orderedSelected = orderAlongRoute(ptA, ptB, selectedParcels);
@@ -1067,7 +1076,7 @@ async function computeRoute(keepSelected = false) {
 
     // 5. Affichage carte
     _clearRouteLayers();
-    if (currentLayer) map.removeLayer(currentLayer);
+    // Ne pas toucher à currentLayer (couche filtre) — les deux coexistent
 
     routeLayer = L.geoJSON(routeGeojson, {
       style: { color: '#4ade80', weight: 4, opacity: 0.85, dashArray: '8 4' }
@@ -1075,7 +1084,7 @@ async function computeRoute(keepSelected = false) {
 
     // Parcelles candidates en orange — popup complète + bouton ajouter
     routeParcelsLayer = L.geoJSON(
-      { type: 'FeatureCollection', features: candidateParcels.map(p => p.feature) },
+      { type: 'FeatureCollection', features: displayCandidates.map(p => p.feature) },
       {
         style: { fillColor: '#fb923c', fillOpacity: 0.45, color: '#fb923c', weight: 1.5, opacity: 0.8 },
         onEachFeature: (feature, layer) => {
@@ -1157,8 +1166,8 @@ async function computeRoute(keepSelected = false) {
       </div>`;
     }).join('');
 
-    const candidateHint = candidateParcels.length
-      ? `<div style="font-size:10px;color:#fb923c;margin:6px 0 2px;text-align:center">🟠 ${candidateParcels.length} parcelle${candidateParcels.length>1?'s':''} disponible${candidateParcels.length>1?'s':''} — cliquer sur la carte pour ajouter</div>`
+    const candidateHint = displayCandidates.length
+      ? `<div style="font-size:10px;color:#fb923c;margin:6px 0 2px;text-align:center">🟠 ${displayCandidates.length} parcelle${displayCandidates.length>1?'s':''} disponible${displayCandidates.length>1?'s':''} — cliquer sur la carte pour ajouter</div>`
       : '';
 
     document.getElementById('route-result').innerHTML = `
@@ -1233,7 +1242,6 @@ function clearRoute() {
   lastPtA = null; lastPtB = null;
   document.getElementById('route-result').innerHTML = '';
   setRouteStatus('', '');
-  if (currentLayer && !map.hasLayer(currentLayer)) currentLayer.addTo(map);
 }
 
 function setRouteStatus(msg, cls) {

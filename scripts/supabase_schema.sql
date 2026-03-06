@@ -21,9 +21,13 @@ CREATE TABLE IF NOT EXISTS public.parcelles (
     geom              GEOMETRY(Polygon, 4326) NOT NULL
 );
 
--- 3. Index spatial (essentiel pour les requêtes bbox)
+-- 3. Index spatial géométrie plane (bbox, filtre commune)
 CREATE INDEX IF NOT EXISTS parcelles_geom_idx
     ON public.parcelles USING GIST (geom);
+
+-- 3b. Index spatial geography (ST_DWithin sphérique — corridor itinéraire)
+CREATE INDEX IF NOT EXISTS parcelles_geom_geo_idx
+    ON public.parcelles USING GIST ((geom::geography));
 
 -- 4. Index sur nom_commune (filtre par commune)
 CREATE INDEX IF NOT EXISTS parcelles_commune_idx
@@ -100,7 +104,7 @@ GRANT EXECUTE ON FUNCTION public.parcelles_by_communes TO anon, authenticated;
 -- Fonction RPC : parcelles_dans_corridor
 -- Retourne les parcelles dont la géométrie est à moins de
 -- radius_km km d'une polyligne GeoJSON (tracé d'itinéraire).
--- Utilise ST_DWithin sur geom directement (bénéficie de l'index GIST).
+-- Double filtre : bbox plane rapide (index GIST geom) + ST_DWithin geography précis.
 -- Appelée depuis app.js > computeRoute()
 -- ============================================================
 DROP FUNCTION IF EXISTS public.parcelles_dans_corridor(text, double precision, double precision);
@@ -139,12 +143,19 @@ AS $$
         ST_AsGeoJSON(p.geom) AS geojson
     FROM public.parcelles p
     WHERE (min_prairie = 0 OR COALESCE(p.prairie_m2, 0) >= min_prairie)
+      -- Pré-filtre bbox plane (utilise index GIST geom, très rapide)
+      AND p.geom && ST_Expand(
+            ST_GeomFromGeoJSON(route_geojson),
+            radius_km / 111.0
+          )
+      -- Filtre précis geography (utilise index GIST geography si créé)
       AND ST_DWithin(
             p.geom::geography,
             ST_GeomFromGeoJSON(route_geojson)::geography,
             radius_km * 1000
           )
-    ORDER BY p.prairie_m2 DESC NULLS LAST;
+    ORDER BY p.prairie_m2 DESC NULLS LAST
+    LIMIT 500;
 $$;
 
 GRANT EXECUTE ON FUNCTION public.parcelles_dans_corridor TO anon, authenticated;

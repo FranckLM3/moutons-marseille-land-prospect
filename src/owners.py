@@ -16,6 +16,31 @@ import pandas as pd
 # Préfixes CS considérés comme "prairie" (haute valeur pâturale)
 PRAIRIE_CS_PREFIXES = ("CS1.1.1.1", "CS1.1.1.2", "CS1.1.1.3")
 
+# Mapping groupe_personne (champ MAJIC) → type de propriétaire
+# Source : documentation MAJIC / nomenclature DGFiP
+#   0  = Indivision / groupement (statut indéterminé)
+#   1  = État
+#   2  = Région
+#   3  = Département
+#   4  = Commune / EPCI / section de commune
+#   5  = Organisme HLM, SEM de construction (bailleur social)
+#   6  = Autre personne morale à statut public ou para-public (CDC, RFF…)
+#   7  = Copropriété
+#   8  = SCI / société civile
+#   9  = Société privée (SA, SARL, SAS…)
+GROUPE_PERSONNE_TYPE: dict[int, str] = {
+    0: "indéterminé",
+    1: "public",       # État
+    2: "public",       # Région
+    3: "public",       # Département
+    4: "public",       # Commune / EPCI
+    5: "semi-public",  # HLM / SEM construction
+    6: "semi-public",  # Organisme para-public (CDC, SNCF…)
+    7: "privé",        # Copropriété
+    8: "privé",        # SCI
+    9: "privé",        # Société privée
+}
+
 
 def load_owners(geojson_path: str | Path) -> gpd.GeoDataFrame:
     """Charge le fichier GeoJSON des parcelles des personnes morales.
@@ -45,7 +70,7 @@ def load_owners(geojson_path: str | Path) -> gpd.GeoDataFrame:
     # Normalisation des noms de colonnes
     owners = _normalize_columns(owners)
 
-    keep = [c for c in ["denomination", "siren", "nom_commune", "geometry"] if c in owners.columns]
+    keep = [c for c in ["denomination", "siren", "groupe_personne", "proprietaire_type", "nom_commune", "geometry"] if c in owners.columns]
     owners = owners[keep].copy()
 
     print(f"  → {len(owners):,} parcelles de personnes morales chargées")
@@ -144,7 +169,7 @@ def _add_pct_prairie(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
 
 
 def _normalize_columns(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
-    """Renomme les colonnes sources vers des noms canoniques."""
+    """Renomme les colonnes sources vers des noms canoniques et calcule proprietaire_type."""
     rename_map: dict[str, str] = {}
 
     col_lower = {c.lower(): c for c in gdf.columns}
@@ -156,8 +181,18 @@ def _normalize_columns(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
         ("siren", "siren"),
         ("_infos_commune.nom_commune", "nom_commune"),
         ("nom_commune", "nom_commune"),
+        ("groupe_personne", "groupe_personne"),
     ]:
         if src in col_lower and dst not in rename_map.values():
             rename_map[col_lower[src]] = dst
 
-    return gdf.rename(columns=rename_map)
+    gdf = gdf.rename(columns=rename_map)
+
+    # Calcul de proprietaire_type depuis groupe_personne
+    if "groupe_personne" in gdf.columns:
+        gdf["proprietaire_type"] = (
+            gdf["groupe_personne"]
+            .apply(lambda v: GROUPE_PERSONNE_TYPE.get(int(v), "indéterminé") if pd.notna(v) else "indéterminé")
+        )
+
+    return gdf

@@ -728,6 +728,13 @@ function buildPopup(feature) {
   const sirenTag = p.siren ? `<span class="tag tag-blue">SIREN&nbsp;${p.siren}</span>` : '';
   const feedbackTag = `<span id="tag-${domId}" class="tag ${feedbackTagClass}">${feedbackLabel}</span>`;
 
+  const PROP_TYPE_CLASSES = { 'public': 'tag-green', 'semi-public': 'tag-orange', 'privé': 'tag-gray', 'indéterminé': 'tag-gray' };
+  const PROP_TYPE_LABELS  = { 'public': '🏛️ Public', 'semi-public': '🏢 Semi-public', 'privé': '🔒 Privé', 'indéterminé': '❓ Inconnu' };
+  const propType = p.proprietaire_type || null;
+  const propTypeTag = propType
+    ? `<span class="tag ${PROP_TYPE_CLASSES[propType] || 'tag-gray'}">${PROP_TYPE_LABELS[propType] || propType}</span>`
+    : '';
+
   const links = [
     p.siren ? `<a class="popup-link" href="https://annuaire-entreprises.data.gouv.fr/entreprise/${p.siren}" target="_blank" rel="noopener">🔍 Fiche entreprise →</a>` : '',
     gmaps   ? `<a class="popup-link" href="${gmaps}" target="_blank" rel="noopener">📍 Google Maps →</a>` : '',
@@ -743,7 +750,7 @@ function buildPopup(feature) {
         ${csRows}
         <span class="k">Propriétaire</span>  <span class="v">${own}</span>
       </div>
-      <div class="popup-tags">${feedbackTag}${sirenTag}</div>
+      <div class="popup-tags">${feedbackTag}${propTypeTag}${sirenTag}</div>
       <div class="popup-feedback">
         <div class="popup-feedback-title">Avis contributeurs</div>
         <div class="popup-feedback-status" id="status-${domId}">${feedbackLabel}</div>
@@ -1223,16 +1230,17 @@ function exportExcel() {
   const filtered = getFiltered();
   if (!filtered.length) { alert('Aucune zone à exporter.'); return; }
 
-  const cols = ['commune', 'surface_m2', 'prairie_m2', 'pct_prairie', 'proprietaire', 'siren'];
+  const cols = ['commune', 'surface_m2', 'prairie_m2', 'pct_prairie', 'proprietaire', 'siren', 'type_proprietaire'];
   const rows = filtered.map(f => {
     const p = f.properties || {};
     return [
-      p.nom_commune  || '',
-      p.area_m2      || '',
-      p.prairie_m2   ?? '',
-      p.pct_prairie  ?? '',
-      p.denomination || '',
-      p.siren        || '',
+      p.nom_commune         || '',
+      p.area_m2             || '',
+      p.prairie_m2          ?? '',
+      p.pct_prairie         ?? '',
+      p.denomination        || '',
+      p.siren               || '',
+      p.proprietaire_type   || '',
     ];
   });
 

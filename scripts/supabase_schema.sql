@@ -8,16 +8,17 @@ CREATE EXTENSION IF NOT EXISTS postgis;
 
 -- 2. Table principale
 CREATE TABLE IF NOT EXISTS public.parcelles (
-    id           TEXT PRIMARY KEY,           -- identifiant cadastral unique
-    area_m2      DOUBLE PRECISION,
-    area_ha      DOUBLE PRECISION,
-    denomination TEXT,
-    siren        TEXT,
-    nom_commune  TEXT NOT NULL,
-    pct_prairie  DOUBLE PRECISION,
-    prairie_m2   DOUBLE PRECISION,
-    cs_detail    JSONB,
-    geom         GEOMETRY(Polygon, 4326) NOT NULL
+    id                TEXT PRIMARY KEY,           -- identifiant cadastral unique
+    area_m2           DOUBLE PRECISION,
+    area_ha           DOUBLE PRECISION,
+    denomination      TEXT,
+    siren             TEXT,
+    nom_commune       TEXT NOT NULL,
+    pct_prairie       DOUBLE PRECISION,
+    prairie_m2        DOUBLE PRECISION,
+    cs_detail         JSONB,
+    proprietaire_type TEXT,                       -- 'public' | 'semi-public' | 'privé' | 'indéterminé'
+    geom              GEOMETRY(Polygon, 4326) NOT NULL
 );
 
 -- 3. Index spatial (essentiel pour les requêtes bbox)
@@ -31,6 +32,9 @@ CREATE INDEX IF NOT EXISTS parcelles_commune_idx
 -- 5. Index sur prairie_m2 (filtre surface min)
 CREATE INDEX IF NOT EXISTS parcelles_prairie_idx
     ON public.parcelles (prairie_m2);
+
+-- 5b. Migration : ajouter proprietaire_type si la table existe déjà
+ALTER TABLE public.parcelles ADD COLUMN IF NOT EXISTS proprietaire_type TEXT;
 
 -- 6. RLS — lecture publique (anon), écriture interdite
 ALTER TABLE public.parcelles ENABLE ROW LEVEL SECURITY;
@@ -53,16 +57,17 @@ CREATE OR REPLACE FUNCTION public.parcelles_by_communes(
     min_prairie  DOUBLE PRECISION DEFAULT 0
 )
 RETURNS TABLE (
-    id           TEXT,
-    area_m2      DOUBLE PRECISION,
-    area_ha      DOUBLE PRECISION,
-    denomination TEXT,
-    siren        TEXT,
-    nom_commune  TEXT,
-    pct_prairie  DOUBLE PRECISION,
-    prairie_m2   DOUBLE PRECISION,
-    cs_detail    JSONB,
-    geojson      TEXT   -- geometry serialisée en GeoJSON pour Leaflet
+    id                TEXT,
+    area_m2           DOUBLE PRECISION,
+    area_ha           DOUBLE PRECISION,
+    denomination      TEXT,
+    siren             TEXT,
+    nom_commune       TEXT,
+    pct_prairie       DOUBLE PRECISION,
+    prairie_m2        DOUBLE PRECISION,
+    cs_detail         JSONB,
+    proprietaire_type TEXT,
+    geojson           TEXT   -- geometry serialisée en GeoJSON pour Leaflet
 )
 LANGUAGE SQL STABLE
 AS $$
@@ -76,6 +81,7 @@ AS $$
         p.pct_prairie,
         p.prairie_m2,
         p.cs_detail,
+        p.proprietaire_type,
         ST_AsGeoJSON(p.geom) AS geojson
     FROM public.parcelles p
     WHERE p.nom_commune = ANY(communes)
@@ -120,7 +126,7 @@ BEGIN
     LOOP
         INSERT INTO public.parcelles
             (id, area_m2, area_ha, denomination, siren, nom_commune,
-             pct_prairie, prairie_m2, cs_detail, geom)
+             pct_prairie, prairie_m2, cs_detail, proprietaire_type, geom)
         VALUES (
             r->>'id',
             (r->>'area_m2')::DOUBLE PRECISION,
@@ -131,18 +137,20 @@ BEGIN
             (r->>'pct_prairie')::DOUBLE PRECISION,
             (r->>'prairie_m2')::DOUBLE PRECISION,
             (r->'cs_detail'),
+            r->>'proprietaire_type',
             ST_GeomFromGeoJSON(r->>'geom_geojson')
         )
         ON CONFLICT (id) DO UPDATE SET
-            area_m2      = EXCLUDED.area_m2,
-            area_ha      = EXCLUDED.area_ha,
-            denomination = EXCLUDED.denomination,
-            siren        = EXCLUDED.siren,
-            nom_commune  = EXCLUDED.nom_commune,
-            pct_prairie  = EXCLUDED.pct_prairie,
-            prairie_m2   = EXCLUDED.prairie_m2,
-            cs_detail    = EXCLUDED.cs_detail,
-            geom         = EXCLUDED.geom;
+            area_m2           = EXCLUDED.area_m2,
+            area_ha           = EXCLUDED.area_ha,
+            denomination      = EXCLUDED.denomination,
+            siren             = EXCLUDED.siren,
+            nom_commune       = EXCLUDED.nom_commune,
+            pct_prairie       = EXCLUDED.pct_prairie,
+            prairie_m2        = EXCLUDED.prairie_m2,
+            cs_detail         = EXCLUDED.cs_detail,
+            proprietaire_type = EXCLUDED.proprietaire_type,
+            geom              = EXCLUDED.geom;
         inserted := inserted + 1;
     END LOOP;
     RETURN inserted;

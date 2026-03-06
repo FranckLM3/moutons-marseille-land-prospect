@@ -77,12 +77,13 @@ def feature_to_row(feat: dict) -> dict | None:
         "area_ha":      props.get("area_ha"),
         "denomination": props.get("denomination"),
         "siren":        str(props["siren"]) if props.get("siren") else None,
-        "nom_commune":  props.get("nom_commune") or "",
-        "pct_prairie":  props.get("pct_prairie"),
-        "prairie_m2":   props.get("prairie_m2"),
-        "cs_detail":    props.get("cs_detail"),
+        "nom_commune":       props.get("nom_commune") or "",
+        "pct_prairie":       props.get("pct_prairie"),
+        "prairie_m2":        props.get("prairie_m2"),
+        "cs_detail":         props.get("cs_detail"),
+        "proprietaire_type": props.get("proprietaire_type"),
         # Géométrie en GeoJSON string — convertie côté Supabase via ST_GeomFromGeoJSON
-        "geom_geojson": json.dumps(geom),
+        "geom_geojson":      json.dumps(geom),
     }
 
 

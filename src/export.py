@@ -17,7 +17,7 @@ KEEP_COLS_CADASTRE = [
 ]
 
 # Colonnes propriétaires + OCS GE enrichies
-KEEP_COLS_OWNERS = ["denomination", "siren", "nom_commune", "pct_prairie", "prairie_m2", "cs_detail"]
+KEEP_COLS_OWNERS = ["denomination", "siren", "nom_commune", "pct_prairie", "prairie_m2", "cs_detail", "proprietaire_type"]
 
 
 def prepare_for_export(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:

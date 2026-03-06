@@ -1,5 +1,4 @@
 // ── Config ────────────────────────────────────────────────────────────────
-const DATA_FILE    = 'pasture_zones.geojson';
 // IGN WMTS public (pas de clé API requise, fonctionne depuis GitHub Pages)
 // Note : wms-r/wms retourne 400 avec Origin cross-site (Kong API key requis)
 // Couche : OCSGE.COUVERTURE.2021-2023 (millésime récent, couvre le dep. 13)
@@ -292,9 +291,7 @@ satellite.addTo(map);
 L.control.layers({ 'Carte': osmLayer, 'Satellite': satellite }, {}, { position: 'bottomright' }).addTo(map);
 
 // ── Chargement ────────────────────────────────────────────────────────────
-// Mode Supabase : les données sont chargées à la demande par commune via RPC
-// Mode fallback : chargement du GeoJSON local (dev / données limitées)
-const USE_SUPABASE_DATA = true; // passer à false pour revenir au GeoJSON local
+// Les données sont chargées depuis Supabase à la demande par commune via RPC
 
 // Cache des features déjà chargées par commune (évite les double-fetch)
 const communeCache = {};  // { nomCommune: [feature, ...] }
@@ -340,55 +337,41 @@ async function loadCommuneList() {
 async function initData() {
   document.getElementById('loading').style.display = 'flex';
 
-  if (USE_SUPABASE_DATA && supabaseEnabled()) {
-    // ── Mode Supabase ──────────────────────────────────────────────────
-    try {
-      allCommunes = await loadCommuneList();
-      if (!allCommunes.length) throw new Error('Aucune commune trouvée dans Supabase');
-
-      // Pré-sélectionner communes Marseille
-      allCommunes.forEach(name => {
-        if (name.toLowerCase().includes(DEFAULT_FILTER.toLowerCase())) selectedCommunes.add(name);
-      });
-
-      // Charger les features des communes sélectionnées
-      allFeatures = await fetchParcellesByCommunes([...selectedCommunes]);
-
-      document.getElementById('loading').style.display = 'none';
-      buildCommuneChips(true); // true = liste déjà chargée, ne pas re-extraire
-      applyFilters();
-    } catch (err) {
-      console.warn('Supabase indisponible, fallback GeoJSON :', err.message);
-      loadGeoJSON(); // fallback
-    }
-  } else {
-    loadGeoJSON();
+  if (!supabaseEnabled()) {
+    document.getElementById('loading').innerHTML = `
+      <div style="color:#f87171;font-size:20px;">⚠️</div>
+      <p style="color:#666;max-width:320px;text-align:center;line-height:1.6">
+        Connexion Supabase non configurée.<br>
+        Vérifiez les variables <code style="color:#4ade80">SUPABASE_URL</code>
+        et <code style="color:#4ade80">SUPABASE_ANON_KEY</code>.
+      </p>`;
+    return;
   }
-}
 
-function loadGeoJSON() {
-  fetch(DATA_FILE)
-    .then(r => {
-      if (!r.ok) throw new Error(`Fichier ${DATA_FILE} introuvable (HTTP ${r.status})`);
-      return r.json();
-    })
-    .then(data => {
-      document.getElementById('loading').style.display = 'none';
-      allFeatures = data.features || [];
-      buildCommuneChips();
-      applyFilters();
-    })
-    .catch(err => {
-      document.getElementById('loading').innerHTML = `
-        <div style="color:#f87171;font-size:20px;">⚠️</div>
-        <p style="color:#666;max-width:320px;text-align:center;line-height:1.6">
-          ${err.message}<br><br>
-          Données non disponibles localement.<br>
-          Vérifiez la connexion à Supabase ou<br>
-          régénérez les données :<br>
-          <code style="color:#4ade80">python scripts/build.py</code>
-        </p>`;
+  try {
+    allCommunes = await loadCommuneList();
+    if (!allCommunes.length) throw new Error('Aucune commune trouvée dans Supabase');
+
+    // Pré-sélectionner communes Marseille
+    allCommunes.forEach(name => {
+      if (name.toLowerCase().includes(DEFAULT_FILTER.toLowerCase())) selectedCommunes.add(name);
     });
+
+    // Charger les features des communes sélectionnées
+    allFeatures = await fetchParcellesByCommunes([...selectedCommunes]);
+
+    document.getElementById('loading').style.display = 'none';
+    buildCommuneChips(true); // true = liste déjà chargée, ne pas re-extraire
+    applyFilters();
+  } catch (err) {
+    console.error('Erreur chargement Supabase :', err.message);
+    document.getElementById('loading').innerHTML = `
+      <div style="color:#f87171;font-size:20px;">⚠️</div>
+      <p style="color:#666;max-width:320px;text-align:center;line-height:1.6">
+        Impossible de charger les données Supabase.<br><br>
+        <span style="color:#f87171;font-size:12px">${err.message}</span>
+      </p>`;
+  }
 }
 
 // ── Démarrage ─────────────────────────────────────────────────────────────
@@ -656,8 +639,8 @@ function getFiltered() {
 }
 
 async function applyFilters() {
-  // En mode Supabase, charger les features manquantes depuis le cache ou l'API
-  if (USE_SUPABASE_DATA && supabaseEnabled()) {
+  // Charger les features manquantes depuis le cache ou l'API Supabase
+  if (supabaseEnabled()) {
     allFeatures = await fetchParcellesByCommunes([...selectedCommunes]);
   }
 

@@ -108,6 +108,21 @@ def upsert_batch(rows: list[dict], dry_run: bool) -> int:
     raise RuntimeError(f"Échec après {MAX_RETRIES} tentatives")
 
 
+def _refresh_communes_view():
+    """Rafraîchit la materialized view communes_list après un import."""
+    url = f"{SUPABASE_URL}/rest/v1/rpc/refresh_communes_list"
+    headers = {
+        "apikey":        SUPABASE_SERVICE_KEY,
+        "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}",
+        "Content-Type":  "application/json",
+    }
+    resp = requests.post(url, headers=headers, json={}, timeout=60)
+    if resp.status_code in (200, 204):
+        print("   → communes_list rafraîchie ✓")
+    else:
+        print(f"   ⚠ REFRESH communes_list : HTTP {resp.status_code} {resp.text[:100]}")
+
+
 def run(geojson_path: Path, dry_run: bool, filter_commune: str | None):
     check_env()
 
@@ -180,6 +195,7 @@ def run(geojson_path: Path, dry_run: bool, filter_commune: str | None):
     print(f"\n✅ {total_ok:,} lignes {verb} en {elapsed:.1f}s")
     if not dry_run:
         print(f"   → Vérifie dans Supabase : Table Editor → {TABLE}")
+        _refresh_communes_view()
 
 
 def parse_args():

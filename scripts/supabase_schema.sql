@@ -97,20 +97,56 @@ $$;
 GRANT EXECUTE ON FUNCTION public.parcelles_by_communes TO anon, authenticated;
 
 -- ============================================================
--- Fonction RPC : liste_communes
--- Retourne la liste triée des communes distinctes dans la table
+-- Index sur nom_commune (accélère liste_communes et les filtres)
 -- ============================================================
+CREATE INDEX IF NOT EXISTS idx_parcelles_nom_commune
+  ON public.parcelles (nom_commune);
+
+-- ============================================================
+-- Materialized view : communes_list
+-- Rafraîchie après chaque import via REFRESH MATERIALIZED VIEW.
+-- Évite le DISTINCT sur 1,7M lignes à chaque appel RPC.
+-- ============================================================
+CREATE MATERIALIZED VIEW IF NOT EXISTS public.communes_list AS
+  SELECT DISTINCT nom_commune
+  FROM public.parcelles
+  WHERE nom_commune IS NOT NULL
+  ORDER BY nom_commune;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_communes_list_nom
+  ON public.communes_list (nom_commune);
+
+GRANT SELECT ON public.communes_list TO anon, authenticated;
+
+-- ============================================================
+-- Fonction RPC : liste_communes
+-- Lit depuis la materialized view (instantané)
+-- ============================================================
+DROP FUNCTION IF EXISTS public.liste_communes();
 CREATE OR REPLACE FUNCTION public.liste_communes()
 RETURNS TABLE (nom_commune TEXT)
 LANGUAGE SQL STABLE
 AS $$
-    SELECT DISTINCT p.nom_commune
-    FROM public.parcelles p
-    WHERE p.nom_commune IS NOT NULL
-    ORDER BY p.nom_commune;
+    SELECT nom_commune FROM public.communes_list ORDER BY nom_commune;
 $$;
 
 GRANT EXECUTE ON FUNCTION public.liste_communes TO anon, authenticated;
+
+-- ============================================================
+-- Fonction RPC : refresh_communes_list
+-- Appelée par le script d'import après chaque batch.
+-- Nécessite les droits service_role.
+-- ============================================================
+CREATE OR REPLACE FUNCTION public.refresh_communes_list()
+RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER
+AS $$
+BEGIN
+    REFRESH MATERIALIZED VIEW CONCURRENTLY public.communes_list;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.refresh_communes_list TO service_role;
 
 -- ============================================================
 -- Fonction RPC : upsert_parcelles_batch

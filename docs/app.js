@@ -299,29 +299,37 @@ const communeCache = {};  // { nomCommune: [feature, ...] }
 async function fetchParcellesByCommunes(communes) {
   if (!supabaseEnabled()) return [];
   const toFetch = communes.filter(c => !(c in communeCache));
+
   if (toFetch.length > 0) {
-    try {
-      const { data, error } = await supabaseClient.rpc('parcelles_by_communes', {
-        communes:    toFetch,
-        min_prairie: 0,
-      }).range(0, 9999); // lève la limite par défaut de 1000 lignes
-      if (error) throw new Error(error.message);
-      // Regrouper par commune et convertir en features GeoJSON
-      toFetch.forEach(c => { communeCache[c] = []; });
-      (data || []).forEach(row => {
-        const { geojson, ...props } = row;
-        const feature = {
-          type: 'Feature',
-          geometry: JSON.parse(geojson),
-          properties: { ...props, cs_detail: props.cs_detail },
-        };
-        communeCache[row.nom_commune] = communeCache[row.nom_commune] || [];
-        communeCache[row.nom_commune].push(feature);
-      });
-    } catch (err) {
-      console.error('fetchParcellesByCommunes error:', err);
+    // Découper en lots de 5 communes max et exécuter séquentiellement (anti-timeout)
+    const BATCH = 5;
+    for (let i = 0; i < toFetch.length; i += BATCH) {
+      const batch = toFetch.slice(i, i + BATCH);
+      // Pré-remplir le cache (évite double-fetch si appel concurrent)
+      batch.forEach(c => { if (!(c in communeCache)) communeCache[c] = []; });
+      try {
+        const { data, error } = await supabaseClient.rpc('parcelles_by_communes', {
+          communes:    batch,
+          min_prairie: 0,
+        }).range(0, 9999);
+        if (error) throw new Error(error.message);
+        (data || []).forEach(row => {
+          const { geojson, ...props } = row;
+          const feature = {
+            type: 'Feature',
+            geometry: JSON.parse(geojson),
+            properties: { ...props, cs_detail: props.cs_detail },
+          };
+          communeCache[row.nom_commune] = communeCache[row.nom_commune] || [];
+          communeCache[row.nom_commune].push(feature);
+        });
+        console.log(`[communes] batch ${Math.floor(i/BATCH)+1}/${Math.ceil(toFetch.length/BATCH)}: ${batch.join(', ')} — ${(data||[]).length} parcelles`);
+      } catch (err) {
+        console.error('fetchParcellesByCommunes error (batch', batch, '):', err);
+      }
     }
   }
+
   // Retourner toutes les features des communes demandées
   return communes.flatMap(c => communeCache[c] || []);
 }

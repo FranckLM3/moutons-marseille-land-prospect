@@ -1022,39 +1022,29 @@ function _splitLineIntoChunks(coords, numChunks = 4, maxPtsPerChunk = 6) {
   return chunks;
 }
 
-// Appelle la RPC parcelles_dans_corridor sur chaque segment séquentiellement (3 en parallèle max)
+// Appelle la RPC parcelles_dans_corridor sur chaque segment séquentiellement (1 par 1)
 // Retourne les lignes dédupliquées (par id)
 async function _fetchCorridorChunked(allCoords, radiusKm, minPrairie) {
-  // Adapter le nombre de chunks à la longueur de la polyligne
-  // ~1 chunk par 50 pts bruts, min 2, max 6
-  const numChunks = Math.max(2, Math.min(6, Math.ceil(allCoords.length / 50)));
-  const chunks = _splitLineIntoChunks(allCoords, numChunks, 6);
-  console.log(`[corridor] ${allCoords.length} pts → ${chunks.length} chunks (≤6 pts chacun)`);
+  // ~1 chunk par 30 pts bruts, min 3, max 20
+  const numChunks = Math.max(3, Math.min(20, Math.ceil(allCoords.length / 30)));
+  const chunks = _splitLineIntoChunks(allCoords, numChunks, 5);
+  console.log(`[corridor] ${allCoords.length} pts → ${chunks.length} chunks séquentiels (≤5 pts chacun)`);
 
   const seen   = new Set();
   const merged = [];
 
-  // Exécution par batch de 3 pour ne pas saturer Supabase
-  const BATCH = 3;
-  for (let b = 0; b < chunks.length; b += BATCH) {
-    const batch = chunks.slice(b, b + BATCH);
-    const results = await Promise.all(batch.map((chunk, j) => {
-      const lineGeoJSON = JSON.stringify({ type: 'LineString', coordinates: chunk });
-      return supabaseClient.rpc('parcelles_dans_corridor', {
-        route_geojson: lineGeoJSON,
-        radius_km:     radiusKm,
-        min_prairie:   minPrairie,
-      }).then(({ data, error }) => {
-        const idx = b + j;
-        if (error) { console.warn(`[corridor] chunk ${idx} erreur:`, error.message); return []; }
-        console.log(`[corridor] chunk ${idx}: ${(data||[]).length} parcelles`);
-        return data || [];
-      });
-    }));
-    for (const rows of results) {
-      for (const row of rows) {
-        if (!seen.has(row.id)) { seen.add(row.id); merged.push(row); }
-      }
+  // Exécution 1 par 1 — évite toute surcharge simultanée sur Supabase
+  for (let i = 0; i < chunks.length; i++) {
+    const lineGeoJSON = JSON.stringify({ type: 'LineString', coordinates: chunks[i] });
+    const { data, error } = await supabaseClient.rpc('parcelles_dans_corridor', {
+      route_geojson: lineGeoJSON,
+      radius_km:     radiusKm,
+      min_prairie:   minPrairie,
+    });
+    if (error) { console.warn(`[corridor] chunk ${i} erreur:`, error.message); continue; }
+    console.log(`[corridor] chunk ${i}/${chunks.length - 1}: ${(data||[]).length} parcelles`);
+    for (const row of (data || [])) {
+      if (!seen.has(row.id)) { seen.add(row.id); merged.push(row); }
     }
   }
 

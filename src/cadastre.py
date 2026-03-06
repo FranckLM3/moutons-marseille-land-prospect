@@ -177,6 +177,8 @@ def load_cadastre(cadastre_dir: str | Path) -> gpd.GeoDataFrame:
     -------
     GeoDataFrame en WGS84 (EPSG:4326).
     """
+    # Compléter CODE_TO_COMMUNE avec toutes les communes du dept 13 (pas seulement AMP)
+    _load_dept_commune_names("13")
     cadastre_dir = Path(cadastre_dir)
     gdfs = []
     missing = []
@@ -221,7 +223,7 @@ def load_cadastre(cadastre_dir: str | Path) -> gpd.GeoDataFrame:
 
 
 # Depts dont les noms sont déjà chargés dans CODE_TO_COMMUNE
-_DEPT_NAMES_LOADED: set[str] = {"13"}  # dept 13 hardcodé dans AMP_COMMUNE_NAMES
+_DEPT_NAMES_LOADED: set[str] = set()  # aucun dept pré-chargé : l'API complète CODE_TO_COMMUNE
 
 
 def _load_dept_commune_names(dept: str) -> None:

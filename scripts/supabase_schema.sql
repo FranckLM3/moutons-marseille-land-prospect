@@ -97,6 +97,58 @@ $$;
 GRANT EXECUTE ON FUNCTION public.parcelles_by_communes TO anon, authenticated;
 
 -- ============================================================
+-- Fonction RPC : parcelles_dans_corridor
+-- Retourne les parcelles dont le centroïde est à moins de
+-- radius_km km d'une polyligne GeoJSON (tracé d'itinéraire).
+-- Appelée depuis app.js > computeRoute()
+-- ============================================================
+DROP FUNCTION IF EXISTS public.parcelles_dans_corridor(text, double precision, double precision);
+
+CREATE OR REPLACE FUNCTION public.parcelles_dans_corridor(
+    route_geojson  TEXT,            -- GeoJSON LineString (coordonnées du tracé ORS)
+    radius_km      DOUBLE PRECISION DEFAULT 2,
+    min_prairie    DOUBLE PRECISION DEFAULT 0
+)
+RETURNS TABLE (
+    id                TEXT,
+    area_m2           DOUBLE PRECISION,
+    area_ha           DOUBLE PRECISION,
+    denomination      TEXT,
+    siren             TEXT,
+    nom_commune       TEXT,
+    pct_prairie       DOUBLE PRECISION,
+    prairie_m2        DOUBLE PRECISION,
+    cs_detail         JSONB,
+    proprietaire_type TEXT,
+    geojson           TEXT
+)
+LANGUAGE SQL STABLE
+AS $$
+    SELECT
+        p.id,
+        p.area_m2,
+        p.area_ha,
+        p.denomination,
+        p.siren,
+        p.nom_commune,
+        p.pct_prairie,
+        p.prairie_m2,
+        p.cs_detail,
+        p.proprietaire_type,
+        ST_AsGeoJSON(p.geom) AS geojson
+    FROM public.parcelles p
+    WHERE (min_prairie = 0 OR COALESCE(p.prairie_m2, 0) >= min_prairie)
+      AND ST_DWithin(
+            ST_Centroid(p.geom)::geography,
+            ST_GeomFromGeoJSON(route_geojson)::geography,
+            radius_km * 1000
+          )
+    ORDER BY p.prairie_m2 DESC NULLS LAST;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.parcelles_dans_corridor TO anon, authenticated;
+
+-- ============================================================
 -- Index sur nom_commune (accélère liste_communes et les filtres)
 -- ============================================================
 CREATE INDEX IF NOT EXISTS idx_parcelles_nom_commune

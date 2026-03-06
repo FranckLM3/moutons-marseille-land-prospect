@@ -1021,17 +1021,22 @@ async function computeRoute(keepSelected = false) {
     routeCoords = baseData.features[0].geometry.coordinates.map(([lng, lat]) => ({ lat, lng }));
 
     // 3. Parcelles candidates dans le corridor autour du tracé réel
-    candidateParcels = allFeatures
-      .filter(f => {
-        const p = f.properties || {};
-        if ((p.prairie_m2 || 0) < minArea) return false;
-        if (selectedIds.has(p.id || '')) return false;
-        const c = centroid(f);
-        if (!c) return false;
-        if (distToPolyline(c, routeCoords) > radiusKm) return false;
-        return true;
+    // Requête Supabase sur toute la PACA via ST_DWithin (pas seulement les communes filtrées)
+    setRouteStatus('Recherche des parcelles sur le trajet…', '');
+    const routeLineGeoJSON = JSON.stringify(baseData.features[0].geometry);
+    const { data: corridorRows, error: corridorErr } = await supabaseClient.rpc(
+      'parcelles_dans_corridor',
+      { route_geojson: routeLineGeoJSON, radius_km: radiusKm, min_prairie: minArea }
+    );
+    if (corridorErr) throw new Error('Corridor Supabase : ' + corridorErr.message);
+
+    candidateParcels = (corridorRows || [])
+      .filter(row => !selectedIds.has(row.id || ''))
+      .map(row => {
+        const feature = { type: 'Feature', properties: row, geometry: JSON.parse(row.geojson) };
+        return { feature, center: centroid(feature), id: row.id || '' };
       })
-      .map(f => ({ feature: f, center: centroid(f), id: f.properties?.id || '' }));
+      .filter(p => p.center !== null);
 
     // 4. Waypoints finaux : A → étapes fixes → parcelles sélectionnées ordonnées → B
     const orderedSelected = orderAlongRoute(ptA, ptB, selectedParcels);

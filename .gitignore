@@ -16,9 +16,8 @@ build/
 # ── Données volumineuses (non versionnées) ────────────────────────────────
 data/*
 
-# ── GeoJSON bruts (sauf le fichier de sortie GitHub Pages) ────────────────
+# ── GeoJSON bruts (non versionnés — données dans Supabase) ───────────────
 *.geojson
-!docs/pasture_zones.geojson
 
 # ── Formats carto ─────────────────────────────────────────────────────────
 *.mbtiles

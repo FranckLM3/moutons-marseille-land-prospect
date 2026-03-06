@@ -386,7 +386,9 @@ function loadGeoJSON() {
         <div style="color:#f87171;font-size:20px;">⚠️</div>
         <p style="color:#666;max-width:320px;text-align:center;line-height:1.6">
           ${err.message}<br><br>
-          Générez d'abord les données :<br>
+          Données non disponibles localement.<br>
+          Vérifiez la connexion à Supabase ou<br>
+          régénérez les données :<br>
           <code style="color:#4ade80">python scripts/build.py</code>
         </p>`;
     });

@@ -304,7 +304,7 @@ async function fetchParcellesByCommunes(communes) {
       const { data, error } = await supabaseClient.rpc('parcelles_by_communes', {
         communes:    toFetch,
         min_prairie: 0,
-      });
+      }).range(0, 9999); // lève la limite par défaut de 1000 lignes
       if (error) throw new Error(error.message);
       // Regrouper par commune et convertir en features GeoJSON
       toFetch.forEach(c => { communeCache[c] = []; });

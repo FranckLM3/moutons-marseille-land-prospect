@@ -1122,10 +1122,10 @@ function _splitLineIntoChunks(coords, numChunks = 4, maxPtsPerChunk = 6) {
 // Appelle la RPC parcelles_dans_corridor sur chaque segment séquentiellement (1 par 1)
 // Retourne les lignes dédupliquées (par id)
 async function _fetchCorridorChunked(allCoords, radiusKm, minPrairie) {
-  // ~1 chunk par 30 pts bruts, min 3, max 20
-  const numChunks = Math.max(3, Math.min(20, Math.ceil(allCoords.length / 30)));
-  const chunks = _splitLineIntoChunks(allCoords, numChunks, 5);
-  console.log(`[corridor] ${allCoords.length} pts → ${chunks.length} chunks séquentiels (≤5 pts chacun)`);
+  // 1 chunk par 15 pts bruts, min 4, max 40 — adapté aux très longs trajets (>500 pts ORS)
+  const numChunks = Math.max(4, Math.min(40, Math.ceil(allCoords.length / 15)));
+  const chunks = _splitLineIntoChunks(allCoords, numChunks, 4);
+  console.log(`[corridor] ${allCoords.length} pts → ${chunks.length} chunks séquentiels (≤4 pts chacun)`);
 
   const seen   = new Set();
   const merged = [];

@@ -49,7 +49,6 @@ DEFAULT_GPKG = (
 DEFAULT_OWNERS   = ROOT / "data" / "parcelles-des-personnes-morales.geojson"
 DEFAULT_CADASTRE = ROOT / "data" / "cadastre"
 DEFAULT_OUTPUT   = ROOT / "docs" / "pasture_zones.geojson"
-DEFAULT_OCS_OUTPUT = ROOT / "docs" / "ocs_ge_pasture.geojson"
 
 
 # ---------------------------------------------------------------------------
@@ -65,8 +64,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--owners",   default=str(DEFAULT_OWNERS))
     parser.add_argument("--cadastre", default=str(DEFAULT_CADASTRE))
     parser.add_argument("--output",   default=str(DEFAULT_OUTPUT))
-    parser.add_argument("--ocs-output", default=str(DEFAULT_OCS_OUTPUT),
-                        help="Chemin d'export GeoJSON pour la couche OCS GE filtrée")
     parser.add_argument("--min-area", type=float, default=0,
                         help="Surface minimale des parcelles en m² (défaut : 0 = pas de filtre)")
     parser.add_argument("--max-area", type=float, default=None)
@@ -85,7 +82,7 @@ def parse_args() -> argparse.Namespace:
 def run(args: argparse.Namespace) -> None:
     # Imports géospatiaux chargés ici uniquement (pas nécessaires en --inject-only)
     from src.cadastre import add_prairie_ratio, join_owners_to_cadastre, load_cadastre
-    from src.export import export_geojson, export_ocs_geojson, prepare_for_export
+    from src.export import export_geojson, prepare_for_export
     from src.filters import add_area_columns, filter_by_area
     from src.land_cover import filter_pasture_cs_only, filter_pasture_zones, load_ocsge
     from src.owners import load_owners
@@ -146,7 +143,6 @@ def run(args: argparse.Namespace) -> None:
     cadastre = cadastre.to_crs("EPSG:4326")
     gdf = prepare_for_export(cadastre)
     export_geojson(gdf, args.output)
-    export_ocs_geojson(ocsge_full, args.ocs_output)
 
     elapsed = time.time() - t0
     print(f"\n✅ Terminé en {elapsed:.1f}s → {args.output}")

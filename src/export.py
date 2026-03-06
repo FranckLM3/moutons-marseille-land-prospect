@@ -90,19 +90,3 @@ def export_geojson(gdf: gpd.GeoDataFrame, output_path: str | Path) -> Path:
     size_mb = output_path.stat().st_size / 1_048_576
     print(f"  ✓ {len(gdf):,} features → {output_path.name} ({size_mb:.1f} MB)")
     return output_path.resolve()
-
-
-def export_ocs_geojson(gdf: gpd.GeoDataFrame, output_path: str | Path) -> Path:
-    """Exporte la couche OCS GE filtrée pour affichage web."""
-    gdf = gdf.copy()
-    gdf_proj = gdf.to_crs("EPSG:2154")
-    print("  → simplification OCS GE (tolérance 5 m)…")
-    gdf_proj["geometry"] = gdf_proj["geometry"].simplify(
-        tolerance=5, preserve_topology=True
-    )
-    gdf = gdf_proj.to_crs("EPSG:4326")
-    keep_cols = [c for c in ["code_cs", "code_us", "geometry"] if c in gdf.columns]
-    if "geometry" not in keep_cols:
-        keep_cols.append("geometry")
-    gdf = gdf[keep_cols].copy()
-    return export_geojson(gdf, output_path)

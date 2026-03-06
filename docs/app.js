@@ -993,6 +993,66 @@ function _simplifyLine(coords, maxPts = 12) {
   return result;
 }
 
+// Découpe une polyligne en N segments qui se chevauchent légèrement (1 point de recouvrement)
+// Chaque segment contient au max maxPtsPerChunk points sous-échantillonnés
+// Retourne un tableau de tableaux de coordonnées [[lng,lat],...]
+function _splitLineIntoChunks(coords, maxPtsPerChunk = 8) {
+  // Toujours travailler sur la polyligne brute (pas de sous-échantillonnage global d'abord)
+  const n = coords.length;
+  if (n <= maxPtsPerChunk) return [coords];
+
+  const chunks = [];
+  // Nombre de chunks : on veut que chaque chunk couvre ~maxPtsPerChunk points bruts
+  const numChunks = Math.ceil(n / (maxPtsPerChunk - 1));
+  const chunkSize = Math.ceil(n / numChunks);
+
+  for (let i = 0; i < numChunks; i++) {
+    const start = i * chunkSize;
+    const end   = Math.min(start + chunkSize + 1, n); // +1 pour le recouvrement
+    chunks.push(coords.slice(start, end));
+  }
+  return chunks;
+}
+
+// Appelle la RPC parcelles_dans_corridor sur chaque segment en parallèle
+// Retourne les lignes dédupliquées (par id)
+async function _fetchCorridorChunked(allCoords, radiusKm, minPrairie) {
+  const chunks = _splitLineIntoChunks(allCoords, 8);
+  console.log(`[corridor] ${allCoords.length} pts → ${chunks.length} chunks`);
+
+  const promises = chunks.map((chunk, i) => {
+    const lineGeoJSON = JSON.stringify({ type: 'LineString', coordinates: chunk });
+    return supabaseClient.rpc('parcelles_dans_corridor', {
+      route_geojson: lineGeoJSON,
+      radius_km:     radiusKm,
+      min_prairie:   minPrairie,
+    }).then(({ data, error }) => {
+      if (error) {
+        console.warn(`[corridor] chunk ${i} erreur:`, error.message);
+        return [];
+      }
+      console.log(`[corridor] chunk ${i}: ${(data||[]).length} parcelles`);
+      return data || [];
+    });
+  });
+
+  const results = await Promise.all(promises);
+
+  // Déduplication par id
+  const seen = new Set();
+  const merged = [];
+  for (const rows of results) {
+    for (const row of rows) {
+      if (!seen.has(row.id)) {
+        seen.add(row.id);
+        merged.push(row);
+      }
+    }
+  }
+  console.log(`[corridor] total dédupliqué: ${merged.length} parcelles`);
+  return merged;
+}
+
 async function computeRoute(keepSelected = false) {
   const startAddr = document.getElementById('route-start').value.trim();
   const endAddr   = document.getElementById('route-end').value.trim();
@@ -1059,17 +1119,9 @@ async function computeRoute(keepSelected = false) {
     if (!keepSelected) {
       setRouteStatus('Recherche des parcelles sur le trajet…', '');
 
-      // Simplifier la polyligne à max 12 points pour alléger la requête Supabase
+      // Découper la polyligne en segments courts et appeler la RPC en parallèle (évite timeout)
       const allCoords = baseData.features[0].geometry.coordinates;
-      const simplifiedCoords = _simplifyLine(allCoords, 12);
-      const routeLineGeoJSON = JSON.stringify({ type: 'LineString', coordinates: simplifiedCoords });
-
-      const { data: corridorRows, error: corridorErr } = await supabaseClient.rpc(
-        'parcelles_dans_corridor',
-        { route_geojson: routeLineGeoJSON, radius_km: radiusKm, min_prairie: minArea }
-      );
-      if (corridorErr) throw new Error('Corridor Supabase : ' + corridorErr.message);
-      console.log('[computeRoute] corridor OK,', (corridorRows||[]).length, 'parcelles');
+      const corridorRows = await _fetchCorridorChunked(allCoords, radiusKm, minArea);
 
       candidateParcels = (corridorRows || [])
         .map(row => {

@@ -995,6 +995,7 @@ async function computeRoute(keepSelected = false) {
 
   try {
     // 1. Géocodage A, étapes fixes, B
+    console.log('[computeRoute] démarrage', { startAddr, endAddr, keepSelected });
     const [ptA, ptB] = await Promise.all([
       geocode(startAddr).then(r => { document.getElementById('status-start').className='route-status ok'; document.getElementById('status-start').textContent='✓ '+r.label.split(',')[0]; return r; }),
       geocode(endAddr).then(r   => { document.getElementById('status-end').className='route-status ok';   document.getElementById('status-end').textContent='✓ '+r.label.split(',')[0];   return r; }),
@@ -1026,6 +1027,7 @@ async function computeRoute(keepSelected = false) {
 
     // 2. Calcul du tracé de base A → étapes fixes → B pour obtenir la polyligne réelle
     setRouteStatus('Calcul du tracé de base…', '');
+    console.log('[computeRoute] géocodage OK, ptA:', ptA, 'ptB:', ptB, 'orsKey:', orsKey ? 'présente' : 'ABSENTE');
     const baseWaypoints = [ptA, ...fixedWaypoints, ptB];
     const baseRes = await fetch('https://api.openrouteservice.org/v2/directions/foot-hiking/geojson', {
       method: 'POST',
@@ -1034,6 +1036,7 @@ async function computeRoute(keepSelected = false) {
     });
     const baseData = await baseRes.json();
     if (!baseRes.ok) throw new Error('ORS : ' + (baseData.error?.message || baseRes.status));
+    console.log('[computeRoute] ORS tracé de base OK,', baseData.features[0].geometry.coordinates.length, 'points');
 
     // Stocker la polyligne du tracé de base comme référence pour le corridor
     routeCoords = baseData.features[0].geometry.coordinates.map(([lng, lat]) => ({ lat, lng }));
@@ -1048,6 +1051,7 @@ async function computeRoute(keepSelected = false) {
         { route_geojson: routeLineGeoJSON, radius_km: radiusKm, min_prairie: minArea }
       );
       if (corridorErr) throw new Error('Corridor Supabase : ' + corridorErr.message);
+      console.log('[computeRoute] corridor OK,', (corridorRows||[]).length, 'parcelles');
 
       candidateParcels = (corridorRows || [])
         .map(row => {
@@ -1208,6 +1212,7 @@ async function computeRoute(keepSelected = false) {
     setRouteStatus(msg, 'ok');
 
   } catch(err) {
+    console.error('[computeRoute] erreur:', err);
     setRouteStatus('Erreur : ' + err.message, 'err');
   } finally {
     btn.disabled = false; btn.textContent = '🐑 Calculer';

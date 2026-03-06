@@ -220,6 +220,79 @@ def load_cadastre(cadastre_dir: str | Path) -> gpd.GeoDataFrame:
     return result
 
 
+def load_cadastre_dept(dept: str, cadastre_dir: str | Path) -> gpd.GeoDataFrame:
+    """Charge les parcelles cadastrales d'un département quelconque.
+
+    Supporte les deux formats produits par download_paca.py :
+      - cadastre-{code}-parcelles.json      (décompressé)
+      - parcelles-{code}.json.gz            (compressé, format AMP)
+
+    Parameters
+    ----------
+    dept:
+        Code département (ex: "04", "83").
+    cadastre_dir:
+        Dossier contenant les fichiers cadastraux.
+
+    Returns
+    -------
+    GeoDataFrame en WGS84 (EPSG:4326).
+    """
+    import json as _json
+
+    cadastre_dir = Path(cadastre_dir)
+    gdfs = []
+
+    # Chercher tous les fichiers du département (les deux formats)
+    patterns = [
+        f"cadastre-{dept}*-parcelles.json",
+        f"parcelles-{dept}*.json.gz",
+    ]
+    files: list[Path] = []
+    for pattern in patterns:
+        files.extend(sorted(cadastre_dir.glob(pattern)))
+
+    if not files:
+        raise FileNotFoundError(
+            f"Aucun fichier cadastral trouvé pour le dept {dept} dans {cadastre_dir}\n"
+            f"Lancez : python scripts/download_paca.py --dept {dept}"
+        )
+
+    def _read_file(path: Path) -> gpd.GeoDataFrame:
+        if path.suffix == ".gz":
+            with gzip.open(path, "rb") as f:
+                buf = io.BytesIO(f.read())
+            gdf = gpd.read_file(buf, engine="pyogrio")
+        else:
+            gdf = gpd.read_file(path, engine="pyogrio")
+        # Extraire le code commune depuis le nom de fichier
+        # cadastre-{code}-parcelles.json  → code = stem sans "cadastre-" et "-parcelles"
+        stem = path.stem  # ex: "cadastre-04001-parcelles"
+        if stem.startswith("cadastre-"):
+            code = stem.split("-")[1]
+        else:
+            code = stem.split("-")[1] if "-" in stem else dept
+        gdf["code_commune"] = code
+        gdf["nom_commune_cadastre"] = CODE_TO_COMMUNE.get(code, code)
+        return gdf
+
+    max_workers = min(8, os.cpu_count() or 4)
+    progress = tqdm(total=len(files), desc=f"Chargement cadastre dept {dept}", unit="fichier") if tqdm else None
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = [executor.submit(_read_file, f) for f in files]
+        for fut in as_completed(futures):
+            gdfs.append(fut.result())
+            if progress:
+                progress.update(1)
+    if progress:
+        progress.close()
+
+    merged = pd.concat(gdfs, ignore_index=True)
+    result = gpd.GeoDataFrame(merged, geometry="geometry", crs="EPSG:4326")
+    print(f"  → {len(result):,} parcelles cadastrales chargées ({len(files)} fichiers, dept {dept})")
+    return result
+
+
 def join_owners_to_cadastre(
     cadastre: gpd.GeoDataFrame,
     owners: gpd.GeoDataFrame,
@@ -247,7 +320,7 @@ def join_owners_to_cadastre(
     if owners.crs.to_epsg() != 4326:
         owners = owners.to_crs("EPSG:4326")
 
-    owner_cols = [c for c in ["denomination", "siren", "nom_commune"] if c in owners.columns]
+    owner_cols = [c for c in ["denomination", "siren", "nom_commune", "proprietaire_type"] if c in owners.columns]
 
     print(f"  → jointure point-dans-polygone ({len(cadastre):,} parcelles × {len(owners):,} propriétaires)…")
     join_mode = "left" if include_without_owner else "inner"
@@ -350,9 +423,15 @@ def add_prairie_ratio(
         .astype(int)
         .reset_index()
     )
-    cs_by_parcel = cs_agg.groupby("_idx").apply(
-        lambda g: _json.dumps({row["code_cs"]: row["inter_area"] for _, row in g.iterrows()})
-    )
+    if cs_agg.empty:
+        cs_by_parcel = pd.Series(dtype=object)
+    else:
+        cs_by_parcel = cs_agg.groupby("_idx").apply(
+            lambda g: _json.dumps({row["code_cs"]: row["inter_area"] for _, row in g.iterrows()})
+        )
+        # pandas >= 2.2 peut retourner un DataFrame si include_groups=False n'est pas spécifié
+        if isinstance(cs_by_parcel, pd.DataFrame):
+            cs_by_parcel = pd.Series(dtype=object)
     cad_proj["cs_detail"] = cad_proj["_idx"].map(cs_by_parcel).fillna("{}")
 
     cad_proj = cad_proj.drop(columns=["_idx", "_area"])

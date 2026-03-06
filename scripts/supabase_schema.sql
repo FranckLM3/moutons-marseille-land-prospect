@@ -52,6 +52,10 @@ CREATE POLICY "parcelles_select_public"
 -- Retourne les parcelles pour une liste de communes + filtre surface min
 -- Appelée depuis app.js via supabase.rpc(...)
 -- ============================================================
+-- DROP requis si la signature de retour change (PostgreSQL ne supporte pas
+-- CREATE OR REPLACE avec un RETURNS TABLE différent)
+DROP FUNCTION IF EXISTS public.parcelles_by_communes(text[], double precision);
+
 CREATE OR REPLACE FUNCTION public.parcelles_by_communes(
     communes     TEXT[],
     min_prairie  DOUBLE PRECISION DEFAULT 0

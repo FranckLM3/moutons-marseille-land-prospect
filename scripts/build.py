@@ -63,6 +63,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--gpkg",     default=str(DEFAULT_GPKG))
     parser.add_argument("--owners",   default=str(DEFAULT_OWNERS))
     parser.add_argument("--cadastre", default=str(DEFAULT_CADASTRE))
+    parser.add_argument("--dept",     default=None,
+                        help="Code département à traiter (ex: 04, 83). "
+                             "Si absent, charge le cadastre AMP complet (dept 13).")
     parser.add_argument("--output",   default=str(DEFAULT_OUTPUT))
     parser.add_argument("--min-area", type=float, default=0,
                         help="Surface minimale des parcelles en m² (défaut : 0 = pas de filtre)")
@@ -81,7 +84,7 @@ def parse_args() -> argparse.Namespace:
 # ---------------------------------------------------------------------------
 def run(args: argparse.Namespace) -> None:
     # Imports géospatiaux chargés ici uniquement (pas nécessaires en --inject-only)
-    from src.cadastre import add_prairie_ratio, join_owners_to_cadastre, load_cadastre
+    from src.cadastre import add_prairie_ratio, join_owners_to_cadastre, load_cadastre, load_cadastre_dept
     from src.export import export_geojson, prepare_for_export
     from src.filters import add_area_columns, filter_by_area
     from src.land_cover import filter_pasture_cs_only, filter_pasture_zones, load_ocsge
@@ -108,7 +111,10 @@ def run(args: argparse.Namespace) -> None:
 
     # ── Étape 3 : parcelles cadastrales + propriétaires ───────────────────
     print("\n[3/5] Chargement cadastre + propriétaires…")
-    cadastre = load_cadastre(args.cadastre)
+    if args.dept and args.dept != "13":
+        cadastre = load_cadastre_dept(args.dept, args.cadastre)
+    else:
+        cadastre = load_cadastre(args.cadastre)
     cadastre = add_area_columns(cadastre)
     if args.min_area > 0 or args.max_area is not None:
         cadastre = filter_by_area(cadastre, min_area_m2=args.min_area, max_area_m2=args.max_area)

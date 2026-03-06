@@ -151,6 +151,8 @@ def parse_args() -> argparse.Namespace:
                         help="Inclure le département 13 (BdR)")
     parser.add_argument("--output", default=str(ROOT / "data" / "parcelles-des-personnes-morales.geojson"),
                         help="Fichier GeoJSON de sortie (remplace l'existant)")
+    parser.add_argument("--merge", action="store_true",
+                        help="Fusionner avec le fichier existant (garde les depts déjà présents)")
     return parser.parse_args()
 
 
@@ -163,6 +165,16 @@ def main():
 
     all_features: list[dict] = []
 
+    # Mode merge : charger les features existantes et exclure les depts à re-télécharger
+    output = Path(args.output)
+    if args.merge and output.exists():
+        print(f"📂 Chargement du fichier existant : {output}")
+        existing = json.loads(output.read_text(encoding="utf-8"))
+        kept = [f for f in existing["features"]
+                if f["properties"].get("departement") not in depts]
+        print(f"   → {len(kept):,} features conservées (depts non concernés)")
+        all_features.extend(kept)
+
     for dept in depts:
         print(f"\n── Département {dept} — {PACA_DEPTS[dept]} ──")
         try:
@@ -170,9 +182,6 @@ def main():
             all_features.extend(feats)
         except Exception as e:
             print(f"  ❌ Erreur dept {dept} : {e}")
-
-    output = Path(args.output)
-    output.parent.mkdir(parents=True, exist_ok=True)
 
     geojson = {
         "type": "FeatureCollection",

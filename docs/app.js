@@ -993,62 +993,60 @@ function _simplifyLine(coords, maxPts = 12) {
   return result;
 }
 
-// Découpe une polyligne en N segments qui se chevauchent légèrement (1 point de recouvrement)
-// Chaque segment contient au max maxPtsPerChunk points sous-échantillonnés
-// Retourne un tableau de tableaux de coordonnées [[lng,lat],...]
-function _splitLineIntoChunks(coords, maxPtsPerChunk = 8) {
-  // Toujours travailler sur la polyligne brute (pas de sous-échantillonnage global d'abord)
+// Découpe une polyligne brute en N segments géographiques avec recouvrement d'1 point,
+// puis sous-échantillonne chaque segment à maxPtsPerChunk points.
+// → chaque chunk est une LineString courte et légère pour la RPC Supabase.
+function _splitLineIntoChunks(coords, numChunks = 4, maxPtsPerChunk = 6) {
   const n = coords.length;
-  if (n <= maxPtsPerChunk) return [coords];
+  if (n <= maxPtsPerChunk) return [_simplifyLine(coords, maxPtsPerChunk)];
 
-  const chunks = [];
-  // Nombre de chunks : on veut que chaque chunk couvre ~maxPtsPerChunk points bruts
-  const numChunks = Math.ceil(n / (maxPtsPerChunk - 1));
   const chunkSize = Math.ceil(n / numChunks);
-
+  const chunks = [];
   for (let i = 0; i < numChunks; i++) {
     const start = i * chunkSize;
-    const end   = Math.min(start + chunkSize + 1, n); // +1 pour le recouvrement
-    chunks.push(coords.slice(start, end));
+    const end   = Math.min(start + chunkSize + 1, n); // +1 recouvrement
+    const raw   = coords.slice(start, end);
+    chunks.push(_simplifyLine(raw, maxPtsPerChunk));   // ≤ 6 pts par chunk
   }
   return chunks;
 }
 
-// Appelle la RPC parcelles_dans_corridor sur chaque segment en parallèle
+// Appelle la RPC parcelles_dans_corridor sur chaque segment séquentiellement (3 en parallèle max)
 // Retourne les lignes dédupliquées (par id)
 async function _fetchCorridorChunked(allCoords, radiusKm, minPrairie) {
-  const chunks = _splitLineIntoChunks(allCoords, 8);
-  console.log(`[corridor] ${allCoords.length} pts → ${chunks.length} chunks`);
+  // Adapter le nombre de chunks à la longueur de la polyligne
+  // ~1 chunk par 50 pts bruts, min 2, max 6
+  const numChunks = Math.max(2, Math.min(6, Math.ceil(allCoords.length / 50)));
+  const chunks = _splitLineIntoChunks(allCoords, numChunks, 6);
+  console.log(`[corridor] ${allCoords.length} pts → ${chunks.length} chunks (≤6 pts chacun)`);
 
-  const promises = chunks.map((chunk, i) => {
-    const lineGeoJSON = JSON.stringify({ type: 'LineString', coordinates: chunk });
-    return supabaseClient.rpc('parcelles_dans_corridor', {
-      route_geojson: lineGeoJSON,
-      radius_km:     radiusKm,
-      min_prairie:   minPrairie,
-    }).then(({ data, error }) => {
-      if (error) {
-        console.warn(`[corridor] chunk ${i} erreur:`, error.message);
-        return [];
-      }
-      console.log(`[corridor] chunk ${i}: ${(data||[]).length} parcelles`);
-      return data || [];
-    });
-  });
-
-  const results = await Promise.all(promises);
-
-  // Déduplication par id
-  const seen = new Set();
+  const seen   = new Set();
   const merged = [];
-  for (const rows of results) {
-    for (const row of rows) {
-      if (!seen.has(row.id)) {
-        seen.add(row.id);
-        merged.push(row);
+
+  // Exécution par batch de 3 pour ne pas saturer Supabase
+  const BATCH = 3;
+  for (let b = 0; b < chunks.length; b += BATCH) {
+    const batch = chunks.slice(b, b + BATCH);
+    const results = await Promise.all(batch.map((chunk, j) => {
+      const lineGeoJSON = JSON.stringify({ type: 'LineString', coordinates: chunk });
+      return supabaseClient.rpc('parcelles_dans_corridor', {
+        route_geojson: lineGeoJSON,
+        radius_km:     radiusKm,
+        min_prairie:   minPrairie,
+      }).then(({ data, error }) => {
+        const idx = b + j;
+        if (error) { console.warn(`[corridor] chunk ${idx} erreur:`, error.message); return []; }
+        console.log(`[corridor] chunk ${idx}: ${(data||[]).length} parcelles`);
+        return data || [];
+      });
+    }));
+    for (const rows of results) {
+      for (const row of rows) {
+        if (!seen.has(row.id)) { seen.add(row.id); merged.push(row); }
       }
     }
   }
+
   console.log(`[corridor] total dédupliqué: ${merged.length} parcelles`);
   return merged;
 }

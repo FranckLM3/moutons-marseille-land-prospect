@@ -116,6 +116,14 @@ def run(geojson_path: Path, dry_run: bool, filter_commune: str | None):
     features = data.get("features") or []
     print(f"   {len(features):,} features chargées")
 
+    # Exclure les parcelles sans aucune info prairie (prairie_m2 absent/null = pas croisées avec OCS GE)
+    before = len(features)
+    features = [
+        feat for feat in features
+        if (feat.get("properties") or {}).get("prairie_m2") is not None
+    ]
+    print(f"   → {len(features):,} features avec prairie analysée (−{before - len(features):,} sans données OCS GE)")
+
     # Filtre optionnel sur commune
     if filter_commune:
         features = [

@@ -980,6 +980,19 @@ function _clearRouteLayers() {
   routeMarkers = [];
 }
 
+// Sous-échantillonne une polyligne [[lng,lat],...] à maxPts points max
+// Garde toujours le premier et le dernier point, distribue uniformément les intermédiaires
+function _simplifyLine(coords, maxPts = 12) {
+  if (coords.length <= maxPts) return coords;
+  const result = [coords[0]];
+  const step = (coords.length - 1) / (maxPts - 1);
+  for (let i = 1; i < maxPts - 1; i++) {
+    result.push(coords[Math.round(i * step)]);
+  }
+  result.push(coords[coords.length - 1]);
+  return result;
+}
+
 async function computeRoute(keepSelected = false) {
   const startAddr = document.getElementById('route-start').value.trim();
   const endAddr   = document.getElementById('route-end').value.trim();
@@ -1045,7 +1058,12 @@ async function computeRoute(keepSelected = false) {
     // Si recalcul après ajout d'une étape, on réutilise le corridor déjà chargé (évite timeout RPC)
     if (!keepSelected) {
       setRouteStatus('Recherche des parcelles sur le trajet…', '');
-      const routeLineGeoJSON = JSON.stringify(baseData.features[0].geometry);
+
+      // Simplifier la polyligne à max 12 points pour alléger la requête Supabase
+      const allCoords = baseData.features[0].geometry.coordinates;
+      const simplifiedCoords = _simplifyLine(allCoords, 12);
+      const routeLineGeoJSON = JSON.stringify({ type: 'LineString', coordinates: simplifiedCoords });
+
       const { data: corridorRows, error: corridorErr } = await supabaseClient.rpc(
         'parcelles_dans_corridor',
         { route_geojson: routeLineGeoJSON, radius_km: radiusKm, min_prairie: minArea }

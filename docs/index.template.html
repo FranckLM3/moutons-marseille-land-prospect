@@ -139,6 +139,34 @@
         </div>
 
         <div class="filter-section">
+          <label>Type de propriétaire</label>
+          <div style="display:flex;gap:4px;margin-bottom:5px">
+            <button class="btn btn-ghost" style="font-size:10px;padding:3px 8px" onclick="selectAllPropTypes()">Tous</button>
+            <button class="btn btn-ghost" style="font-size:10px;padding:3px 8px" onclick="deselectAllPropTypes()">Aucun</button>
+          </div>
+          <label class="filter-inline">
+            <input type="checkbox" class="prop-type-check" value="public" checked />
+            🏛️ <span class="tag tag-green" style="font-size:10px">Public</span>
+            <span style="color:#888;font-size:10px">(État, Région, Département, Commune)</span>
+          </label>
+          <label class="filter-inline">
+            <input type="checkbox" class="prop-type-check" value="semi-public" checked />
+            🏢 <span class="tag tag-orange" style="font-size:10px">Semi-public</span>
+            <span style="color:#888;font-size:10px">(HLM, CDC, organismes para-publics)</span>
+          </label>
+          <label class="filter-inline">
+            <input type="checkbox" class="prop-type-check" value="privé" checked />
+            🔒 <span class="tag tag-gray" style="font-size:10px">Privé</span>
+            <span style="color:#888;font-size:10px">(SCI, sociétés, copropriétés)</span>
+          </label>
+          <label class="filter-inline">
+            <input type="checkbox" class="prop-type-check" value="indéterminé" checked />
+            ❓ <span class="tag tag-gray" style="font-size:10px">Indéterminé</span>
+            <span style="color:#888;font-size:10px">(indivisions, statut inconnu)</span>
+          </label>
+        </div>
+
+        <div class="filter-section">
           <label class="filter-inline">
             <input type="checkbox" id="toggle-ocs" />
             Afficher l'OCS GE complet

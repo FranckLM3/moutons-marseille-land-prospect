@@ -40,6 +40,7 @@ let allCommunes      = [];        // liste triée complète
 let minAreaHa        = 0.5;       // surface pâturable min en ha (défaut 5 000 m²)
 let showValidatedOnly = false;    // filtre sur parcelles validées par contributeurs
 let showOwnerKnownOnly = false;   // filtre sur parcelles avec propriétaire connu
+let selectedPropTypes = new Set(['public', 'semi-public', 'privé', 'indéterminé']); // filtre type propriétaire
 let ocsWmsLayer = null;
 
 // ── Avis contributeurs (localStorage) ───────────────────────────────────
@@ -555,6 +556,27 @@ if (ownerKnownOnlyEl) {
   });
 }
 
+// Filtres type de propriétaire
+document.querySelectorAll('.prop-type-check').forEach(checkbox => {
+  checkbox.addEventListener('change', () => {
+    selectedPropTypes.clear();
+    document.querySelectorAll('.prop-type-check:checked').forEach(el => {
+      selectedPropTypes.add(el.value);
+    });
+    applyFilters();
+  });
+});
+
+function selectAllPropTypes() {
+  document.querySelectorAll('.prop-type-check').forEach(el => { el.checked = true; selectedPropTypes.add(el.value); });
+  applyFilters();
+}
+function deselectAllPropTypes() {
+  document.querySelectorAll('.prop-type-check').forEach(el => { el.checked = false; });
+  selectedPropTypes.clear();
+  applyFilters();
+}
+
 const toggleOcsEl = document.getElementById('toggle-ocs');
 const ocsLegendList = document.getElementById('ocs-legend-list');
 if (toggleOcsEl) {
@@ -624,6 +646,11 @@ function getFiltered() {
       if (getLocalFeedbackStatus(parcelId) !== 'yes') return false;
     }
     if (showOwnerKnownOnly && !hasKnownOwner(p)) return false;
+    // Filtre type de propriétaire (si pas tous sélectionnés)
+    if (selectedPropTypes.size < 4) {
+      const ptype = p.proprietaire_type || 'indéterminé';
+      if (!selectedPropTypes.has(ptype)) return false;
+    }
     return true;
   });
 }
@@ -674,6 +701,9 @@ async function resetFilters() {
   showValidatedOnly = false;
   if (ownerKnownOnlyEl) ownerKnownOnlyEl.checked = false;
   showOwnerKnownOnly = false;
+  // Réinitialise type propriétaire → tous cochés
+  selectedPropTypes = new Set(['public', 'semi-public', 'privé', 'indéterminé']);
+  document.querySelectorAll('.prop-type-check').forEach(el => { el.checked = true; });
   // Réinitialise communes → Marseille
   selectedCommunes.clear();
   allCommunes.forEach(name => {

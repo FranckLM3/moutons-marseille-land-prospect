@@ -276,6 +276,9 @@
       letter-spacing: normal !important;
       margin-bottom: 0 !important;
     }
+    .filter-inline + .filter-inline {
+      margin-top: 5px !important;
+    }
     .filter-inline input {
       accent-color: #4ade80;
     }

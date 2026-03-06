@@ -748,6 +748,7 @@ document.addEventListener('keydown', (event) => {
 let routeLayer        = null;
 let routeParcelsLayer = null;
 let routeMarkers      = [];
+let routeCoords       = [];   // polyligne du tracé ORS [{lat,lng},...] — utilisée pour le corridor
 let geocodeCache      = {};
 let lastPtA           = null;
 let lastPtB           = null;
@@ -781,10 +782,47 @@ function distToSegment(p, a, b) {
   return haversine(p, { lat: a.lat + t*dy, lng: a.lng + t*dx });
 }
 
+// Distance minimale d'un point à une polyligne (tableau de {lat,lng})
+function distToPolyline(p, coords) {
+  let minD = Infinity;
+  for (let i = 0; i < coords.length - 1; i++) {
+    const d = distToSegment(p, coords[i], coords[i + 1]);
+    if (d < minD) minD = d;
+  }
+  return minD;
+}
+
 function projectionOnSegment(p, a, b) {
   const dx = b.lng - a.lng, dy = b.lat - a.lat;
   if (dx === 0 && dy === 0) return 0;
   return Math.max(0, Math.min(1, ((p.lng - a.lng)*dx + (p.lat - a.lat)*dy) / (dx*dx + dy*dy)));
+}
+
+// Position cumulative d'un point projeté sur une polyligne (0 = départ, 1 = arrivée)
+function projectionOnPolyline(p, coords) {
+  if (coords.length < 2) return 0;
+  let bestT = 0, bestSeg = 0, bestDist = Infinity;
+  const segLengths = [];
+  let totalLen = 0;
+  for (let i = 0; i < coords.length - 1; i++) {
+    const l = haversine(coords[i], coords[i + 1]);
+    segLengths.push(l);
+    totalLen += l;
+  }
+  let cumLen = 0;
+  for (let i = 0; i < coords.length - 1; i++) {
+    const t = projectionOnSegment(p, coords[i], coords[i + 1]);
+    const proj = { lat: coords[i].lat + t*(coords[i+1].lat - coords[i].lat), lng: coords[i].lng + t*(coords[i+1].lng - coords[i].lng) };
+    const d = haversine(p, proj);
+    if (d < bestDist) {
+      bestDist = d;
+      bestSeg  = i;
+      bestT    = t;
+    }
+  }
+  let cumBefore = 0;
+  for (let i = 0; i < bestSeg; i++) cumBefore += segLengths[i];
+  return totalLen > 0 ? (cumBefore + bestT * segLengths[bestSeg]) / totalLen : 0;
 }
 
 function centroid(feature) {
@@ -795,6 +833,13 @@ function centroid(feature) {
 }
 
 function orderAlongRoute(ptA, ptB, parcelles) {
+  // Si le tracé ORS est disponible, ordonner le long de la vraie polyligne
+  if (routeCoords.length >= 2) {
+    return [...parcelles].sort((a, b) =>
+      projectionOnPolyline(a.center, routeCoords) - projectionOnPolyline(b.center, routeCoords)
+    );
+  }
+  // Fallback : ligne droite A→B
   return [...parcelles].sort((a, b) =>
     projectionOnSegment(a.center, ptA, ptB) - projectionOnSegment(b.center, ptA, ptB)
   );
@@ -847,11 +892,26 @@ async function computeRoute(keepSelected = false) {
 
     lastPtA = ptA; lastPtB = ptB;
 
-    // 2. Parcelles candidates dans le périmètre
     const minArea  = parseInt(document.getElementById('rte-area').value);
     const radiusKm = parseInt(document.getElementById('rte-radius').value);
+    const orsKey   = window.ORS_API_KEY || '';
     const selectedIds = new Set(selectedParcels.map(p => p.id));
 
+    // 2. Calcul du tracé de base A → étapes fixes → B pour obtenir la polyligne réelle
+    setRouteStatus('Calcul du tracé de base…', '');
+    const baseWaypoints = [ptA, ...fixedWaypoints, ptB];
+    const baseRes = await fetch('https://api.openrouteservice.org/v2/directions/foot-hiking/geojson', {
+      method: 'POST',
+      headers: { 'Authorization': orsKey, 'Content-Type': 'application/json; charset=utf-8', 'Accept': 'application/json, application/geo+json' },
+      body: JSON.stringify({ coordinates: baseWaypoints.map(p => [p.lng, p.lat]) })
+    });
+    const baseData = await baseRes.json();
+    if (!baseRes.ok) throw new Error('ORS : ' + (baseData.error?.message || baseRes.status));
+
+    // Stocker la polyligne du tracé de base comme référence pour le corridor
+    routeCoords = baseData.features[0].geometry.coordinates.map(([lng, lat]) => ({ lat, lng }));
+
+    // 3. Parcelles candidates dans le corridor autour du tracé réel
     candidateParcels = allFeatures
       .filter(f => {
         const p = f.properties || {};
@@ -859,18 +919,17 @@ async function computeRoute(keepSelected = false) {
         if (selectedIds.has(p.id || '')) return false;
         const c = centroid(f);
         if (!c) return false;
-        if (distToSegment(c, ptA, ptB) > radiusKm) return false;
+        if (distToPolyline(c, routeCoords) > radiusKm) return false;
         return true;
       })
       .map(f => ({ feature: f, center: centroid(f), id: f.properties?.id || '' }));
 
-    // 3. Waypoints : A → étapes fixes → parcelles sélectionnées ordonnées → B
+    // 4. Waypoints finaux : A → étapes fixes → parcelles sélectionnées ordonnées → B
     const orderedSelected = orderAlongRoute(ptA, ptB, selectedParcels);
     const waypoints = [ptA, ...fixedWaypoints, ...orderedSelected.map(p => p.center), ptB];
 
-    // 4. Appel ORS foot-hiking
-    setRouteStatus('Calcul de l\'itinéraire…', '');
-    const orsKey = window.ORS_API_KEY || '';
+    // 5. Appel ORS final avec toutes les étapes
+    setRouteStatus('Calcul de l\'itinéraire final…', '');
     const orsRes = await fetch('https://api.openrouteservice.org/v2/directions/foot-hiking/geojson', {
       method: 'POST',
       headers: {
@@ -882,6 +941,9 @@ async function computeRoute(keepSelected = false) {
     });
     const orsData = await orsRes.json();
     if (!orsRes.ok) throw new Error('ORS : ' + (orsData.error?.message || orsRes.status));
+
+    // Mettre à jour routeCoords avec le tracé final (incluant les étapes sélectionnées)
+    routeCoords = orsData.features[0].geometry.coordinates.map(([lng, lat]) => ({ lat, lng }));
 
     const routeGeojson = orsData.features[0].geometry;
     const distKm = (orsData.features[0].properties.summary.distance / 1000).toFixed(1);

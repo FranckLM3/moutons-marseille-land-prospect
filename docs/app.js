@@ -301,8 +301,8 @@ async function fetchParcellesByCommunes(communes) {
   const toFetch = communes.filter(c => !(c in communeCache));
 
   if (toFetch.length > 0) {
-    // Découper en lots de 5 communes max et exécuter séquentiellement (anti-timeout)
-    const BATCH = 5;
+    // Une commune à la fois séquentiellement (anti-timeout)
+    const BATCH = 1;
     for (let i = 0; i < toFetch.length; i += BATCH) {
       const batch = toFetch.slice(i, i + BATCH);
       // Pré-remplir le cache (évite double-fetch si appel concurrent)

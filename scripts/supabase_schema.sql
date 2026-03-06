@@ -87,6 +87,22 @@ $$;
 GRANT EXECUTE ON FUNCTION public.parcelles_by_communes TO anon, authenticated;
 
 -- ============================================================
+-- Fonction RPC : liste_communes
+-- Retourne la liste triée des communes distinctes dans la table
+-- ============================================================
+CREATE OR REPLACE FUNCTION public.liste_communes()
+RETURNS TABLE (nom_commune TEXT)
+LANGUAGE SQL STABLE
+AS $$
+    SELECT DISTINCT p.nom_commune
+    FROM public.parcelles p
+    WHERE p.nom_commune IS NOT NULL
+    ORDER BY p.nom_commune;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.liste_communes TO anon, authenticated;
+
+-- ============================================================
 -- Fonction RPC : upsert_parcelles_batch
 -- Utilisée par le script d'import Python.
 -- Accepte un tableau JSONB de rows, chacun avec un champ

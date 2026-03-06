@@ -329,15 +329,11 @@ async function fetchParcellesByCommunes(communes) {
 }
 
 async function loadCommuneList() {
-  // Charge la liste des communes disponibles sans charger les géométries
+  // Charge la liste des communes distinctes via RPC (évite la limite de 1000 lignes)
   if (!supabaseEnabled()) return [];
-  const { data, error } = await supabaseClient
-    .from('parcelles')
-    .select('nom_commune')
-    .order('nom_commune');
-  if (error) { console.error(error); return []; }
-  const seen = new Set();
-  return (data || []).map(r => r.nom_commune).filter(c => c && seen.has(c) ? false : (seen.add(c), true));
+  const { data, error } = await supabaseClient.rpc('liste_communes');
+  if (error) { console.error('loadCommuneList error:', error); return []; }
+  return (data || []).map(r => r.nom_commune).filter(Boolean);
 }
 
 async function initData() {

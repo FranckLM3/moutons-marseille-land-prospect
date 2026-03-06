@@ -811,6 +811,9 @@ function buildPopup(feature) {
 function switchTab(tab) {
   document.querySelectorAll('.sidebar-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
   document.querySelectorAll('.sidebar-pane').forEach(p => p.classList.toggle('active', p.id === 'pane-' + tab));
+  // Remonter en haut de la sidebar au changement d'onglet
+  const scroll = document.getElementById('sidebar-scroll');
+  if (scroll) scroll.scrollTop = 0;
   // Recadre sur la bonne couche selon l'onglet actif
   if (tab === 'route' && routeLayer) {
     try { map.fitBounds(routeLayer.getBounds(), { padding: [30, 30] }); } catch(_) {}

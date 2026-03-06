@@ -1099,8 +1099,9 @@ async function computeRoute(keepSelected = false) {
 
     lastPtA = ptA; lastPtB = ptB;
 
-    const minArea  = parseInt(document.getElementById('rte-area').value);
-    const radiusKm = parseInt(document.getElementById('rte-radius').value);
+    const minArea   = parseInt(document.getElementById('rte-area').value);
+    const radiusKm  = parseFloat(document.getElementById('rte-radius').value);
+    const ownerFilter = document.querySelector('input[name="rte-owner"]:checked')?.value || 'tous';
     const orsKey   = window.ORS_API_KEY || '';
     const selectedIds = new Set(selectedParcels.map(p => p.id));
 
@@ -1136,8 +1137,13 @@ async function computeRoute(keepSelected = false) {
         })
         .filter(p => p.center !== null);
     }
-    // Exclure les parcelles déjà sélectionnées de l'affichage candidat
-    const displayCandidates = candidateParcels.filter(p => !selectedIds.has(p.id));
+    // Exclure les parcelles déjà sélectionnées + filtrer par type de propriétaire
+    const displayCandidates = candidateParcels.filter(p => {
+      if (selectedIds.has(p.id)) return false;
+      if (ownerFilter === 'public') return p.feature.properties.proprietaire_type === 'public';
+      if (ownerFilter === 'prive')  return p.feature.properties.proprietaire_type === 'prive';
+      return true; // 'tous'
+    });
 
     // 4. Waypoints finaux : A → étapes fixes → parcelles sélectionnées ordonnées → B
     const orderedSelected = orderAlongRoute(ptA, ptB, selectedParcels);

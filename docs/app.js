@@ -410,10 +410,10 @@ function buildCommuneChips(skipExtract = false) {
     chip.className = 'comm-chip ' + (active ? 'active' : 'inactive');
     chip.dataset.commune = name;
     chip.innerHTML = `<span class="comm-dot"></span>${name}`;
-    chip.addEventListener('click', async () => {
+    chip.addEventListener('click', () => {
       selectedCommunes.has(name) ? selectedCommunes.delete(name) : selectedCommunes.add(name);
       refreshCommuneChips();
-      await applyFilters();
+      _scheduleApplyFilters(); // debounce 400ms — évite les rafales
     });
     container.appendChild(chip);
   });
@@ -471,8 +471,8 @@ function toggleShowAllCommunes() {
   _updateToggleBtn();
 }
 
-function selectAllCommunes()   { allCommunes.forEach(c => selectedCommunes.add(c)); refreshCommuneChips(); applyFilters(); }
-function deselectAllCommunes() { selectedCommunes.clear(); refreshCommuneChips(); applyFilters(); }
+function selectAllCommunes()   { allCommunes.forEach(c => selectedCommunes.add(c)); refreshCommuneChips(); _scheduleApplyFilters(); }
+function deselectAllCommunes() { selectedCommunes.clear(); refreshCommuneChips(); _renderFilters(); } // deselect = données déjà en cache ou vide
 
 function filterCommuneChips(query) {
   _applyChipVisibility(query);
@@ -520,14 +520,14 @@ document.getElementById('area-slider').addEventListener('input', function() {
     : m2 < 10000 ? `${m2.toLocaleString('fr')} m²`
     : `${(m2 / 10000).toLocaleString('fr', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ha`;
   document.getElementById('area-value').textContent = label;
-  applyFilters();
+  _renderFilters(); // pas de réseau — filtre local uniquement
 });
 
 const validatedOnlyEl = document.getElementById('validated-only');
 if (validatedOnlyEl) {
   validatedOnlyEl.addEventListener('change', () => {
     showValidatedOnly = validatedOnlyEl.checked;
-    applyFilters();
+    _renderFilters();
   });
 }
 
@@ -535,7 +535,7 @@ const ownerKnownOnlyEl = document.getElementById('owner-known-only');
 if (ownerKnownOnlyEl) {
   ownerKnownOnlyEl.addEventListener('change', () => {
     showOwnerKnownOnly = ownerKnownOnlyEl.checked;
-    applyFilters();
+    _renderFilters();
   });
 }
 
@@ -546,18 +546,18 @@ document.querySelectorAll('.prop-type-check').forEach(checkbox => {
     document.querySelectorAll('.prop-type-check:checked').forEach(el => {
       selectedPropTypes.add(el.value);
     });
-    applyFilters();
+    _renderFilters();
   });
 });
 
 function selectAllPropTypes() {
   document.querySelectorAll('.prop-type-check').forEach(el => { el.checked = true; selectedPropTypes.add(el.value); });
-  applyFilters();
+  _renderFilters();
 }
 function deselectAllPropTypes() {
   document.querySelectorAll('.prop-type-check').forEach(el => { el.checked = false; });
   selectedPropTypes.clear();
-  applyFilters();
+  _renderFilters();
 }
 
 const toggleOcsEl = document.getElementById('toggle-ocs');
@@ -638,12 +638,8 @@ function getFiltered() {
   });
 }
 
-async function applyFilters() {
-  // Charger les features manquantes depuis le cache ou l'API Supabase
-  if (supabaseEnabled()) {
-    allFeatures = await fetchParcellesByCommunes([...selectedCommunes]);
-  }
-
+// ── Rendu filtre (Leaflet uniquement, sans réseau) ───────────────────────
+function _renderFilters() {
   const filtered = getFiltered();
 
   if (currentLayer) map.removeLayer(currentLayer);
@@ -661,7 +657,6 @@ async function applyFilters() {
   }).addTo(map);
 
   if (filtered.length > 0) {
-    // Recadrer uniquement si on est sur l'onglet filtre (pas itinéraire)
     const activeTab = document.querySelector('.sidebar-tab.active')?.dataset?.tab;
     if (activeTab !== 'route') {
       try { map.fitBounds(currentLayer.getBounds(), { padding: [20, 20], maxZoom: 14 }); } catch(_) {}
@@ -676,6 +671,23 @@ async function applyFilters() {
   document.getElementById('count-visible').textContent = filtered.length.toLocaleString('fr');
   document.getElementById('stat-ha').textContent       = totalHa.toLocaleString('fr', { maximumFractionDigits: 0 }) + ' ha';
   document.getElementById('stat-pct').textContent      = pct + '%';
+}
+
+// Debounce pour applyFilters (évite les rafales lors du clic sur plusieurs communes)
+let _applyFiltersTimer = null;
+function _scheduleApplyFilters() {
+  clearTimeout(_applyFiltersTimer);
+  _applyFiltersTimer = setTimeout(() => applyFilters(), 400);
+}
+
+async function applyFilters() {
+  clearTimeout(_applyFiltersTimer);
+  // Charger uniquement les communes absentes du cache — pas de réseau si déjà en cache
+  if (supabaseEnabled()) {
+    allFeatures = await fetchParcellesByCommunes([...selectedCommunes]);
+  }
+
+  _renderFilters();
 }
 
 // ── Réinitialisation ──────────────────────────────────────────────────────

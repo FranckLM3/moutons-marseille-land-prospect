@@ -6,6 +6,34 @@
 -- 1. Activer PostGIS (si pas encore fait)
 CREATE EXTENSION IF NOT EXISTS postgis;
 
+-- 1b. RPC de nettoyage : supprime les parcelles avec prairie_m2 < seuil par petites tranches
+-- Utile pour purger la base après un changement de filtre (ex: 500 → 1000 m²)
+-- Usage dans SQL Editor : SELECT delete_small_prairies(1000, 10000);
+CREATE OR REPLACE FUNCTION public.delete_small_prairies(
+    min_m2      DOUBLE PRECISION DEFAULT 1000,
+    batch_size  INT DEFAULT 10000
+)
+RETURNS INT LANGUAGE plpgsql AS $$
+DECLARE
+    deleted_total INT := 0;
+    deleted_batch INT;
+BEGIN
+    LOOP
+        DELETE FROM public.parcelles
+        WHERE id IN (
+            SELECT id FROM public.parcelles
+            WHERE prairie_m2 < min_m2
+            LIMIT batch_size
+        );
+        GET DIAGNOSTICS deleted_batch = ROW_COUNT;
+        deleted_total := deleted_total + deleted_batch;
+        EXIT WHEN deleted_batch = 0;
+    END LOOP;
+    RETURN deleted_total;
+END;
+$$;
+GRANT EXECUTE ON FUNCTION public.delete_small_prairies TO service_role;
+
 -- 2. Table principale
 CREATE TABLE IF NOT EXISTS public.parcelles (
     id                TEXT PRIMARY KEY,           -- identifiant cadastral unique

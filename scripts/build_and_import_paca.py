@@ -87,7 +87,7 @@ def process_dept(
             "--gpkg",     str(gpkg),
             "--owners",   owners,
             "--output",   output_path,
-            "--min-area", "500",  # écarte les micro-parcelles avant l'intersection OCS GE
+            "--min-area", "1000",  # écarte les micro-parcelles avant l'intersection OCS GE
         ]
         # Passer --dept seulement pour les depts hors AMP (13 = AMP)
         if dept != "13":

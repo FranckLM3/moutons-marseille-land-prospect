@@ -140,9 +140,9 @@ def run(geojson_path: Path, dry_run: bool, filter_commune: str | None):
     ]
     print(f"   → {len(features):,} features avec prairie analysée (−{before - len(features):,} sans données OCS GE)")
 
-    # Filtre surface pâturable minimale : ne garder que prairie_m2 >= 500 m²
+    # Filtre surface pâturable minimale : ne garder que prairie_m2 >= 1000 m²
     # Réduit drastiquement le volume en écartant parcelles urbaines/minérales sans intérêt pastoral
-    MIN_PRAIRIE_M2 = 500
+    MIN_PRAIRIE_M2 = 1000
     before = len(features)
     features = [
         feat for feat in features

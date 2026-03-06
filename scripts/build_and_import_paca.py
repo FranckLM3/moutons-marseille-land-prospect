@@ -84,9 +84,10 @@ def process_dept(
 
         cmd_build = [
             PYTHON, "scripts/build.py",
-            "--gpkg",   str(gpkg),
-            "--owners", owners,
-            "--output", output_path,
+            "--gpkg",     str(gpkg),
+            "--owners",   owners,
+            "--output",   output_path,
+            "--min-area", "500",  # écarte les micro-parcelles avant l'intersection OCS GE
         ]
         # Passer --dept seulement pour les depts hors AMP (13 = AMP)
         if dept != "13":

@@ -995,10 +995,25 @@ function setupAddressAutocomplete(input) {
 
 // Appliquer l'autocomplete aux champs fixes au démarrage de la page
 document.addEventListener('DOMContentLoaded', () => {
+  // Autocomplete adresses
   ['route-start', 'route-end'].forEach(id => {
     const el = document.getElementById(id);
     if (el) setupAddressAutocomplete(el);
   });
+
+  // Forcer les sliders à leur valeur par défaut (évite restauration navigateur)
+  const areaSlider = document.getElementById('area-slider');
+  if (areaSlider) {
+    areaSlider.value = 5000;
+    minAreaHa = 0.5;
+    const m2 = 5000;
+    document.getElementById('area-value').textContent = `${m2.toLocaleString('fr')} m²`;
+  }
+  const rteArea = document.getElementById('rte-area');
+  if (rteArea) {
+    rteArea.value = 5000;
+    document.getElementById('rte-area-val').textContent = '5 000 m²';
+  }
 });
 
 

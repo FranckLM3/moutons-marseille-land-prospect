@@ -220,12 +220,40 @@ def load_cadastre(cadastre_dir: str | Path) -> gpd.GeoDataFrame:
     return result
 
 
+# Depts dont les noms sont déjà chargés dans CODE_TO_COMMUNE
+_DEPT_NAMES_LOADED: set[str] = {"13"}  # dept 13 hardcodé dans AMP_COMMUNE_NAMES
+
+
+def _load_dept_commune_names(dept: str) -> None:
+    """Enrichit CODE_TO_COMMUNE avec les noms des communes du département.
+
+    Appel à l'API geo.api.gouv.fr (une seule fois par département, mis en cache).
+    En cas d'échec réseau, les parcelles auront leur code INSEE comme nom (dégradé).
+    """
+    if dept in _DEPT_NAMES_LOADED:
+        return
+    try:
+        import urllib.request
+        url = f"https://geo.api.gouv.fr/departements/{dept}/communes?fields=code,nom&format=json&limit=1000"
+        with urllib.request.urlopen(url, timeout=10) as resp:
+            communes = __import__("json").loads(resp.read())
+        for c in communes:
+            CODE_TO_COMMUNE[c["code"]] = c["nom"]
+        _DEPT_NAMES_LOADED.add(dept)
+        print(f"  → {len(communes)} noms de communes chargés pour le dept {dept}")
+    except Exception as exc:
+        print(f"  ⚠ Impossible de charger les noms communes dept {dept} : {exc}")
+
+
 def load_cadastre_dept(dept: str, cadastre_dir: str | Path) -> gpd.GeoDataFrame:
     """Charge les parcelles cadastrales d'un département quelconque.
 
     Supporte les deux formats produits par download_paca.py :
       - cadastre-{code}-parcelles.json      (décompressé)
       - parcelles-{code}.json.gz            (compressé, format AMP)
+
+    Les noms de communes sont récupérés depuis l'API geo.api.gouv.fr
+    et mis en cache dans CODE_TO_COMMUNE pour les appels suivants.
 
     Parameters
     ----------
@@ -239,6 +267,9 @@ def load_cadastre_dept(dept: str, cadastre_dir: str | Path) -> gpd.GeoDataFrame:
     GeoDataFrame en WGS84 (EPSG:4326).
     """
     import json as _json
+
+    # Enrichir CODE_TO_COMMUNE avec les communes du département si nécessaire
+    _load_dept_commune_names(dept)
 
     cadastre_dir = Path(cadastre_dir)
     gdfs = []
@@ -334,16 +365,14 @@ def join_owners_to_cadastre(
     id_col = "id" if "id" in result.columns else result.columns[0]
     result = result.drop_duplicates(subset=[id_col])
 
-    # nom_commune : utiliser celui des personnes morales si présent,
-    # sinon fallback sur nom_commune_cadastre (issu du code INSEE, 100% renseigné)
-    if "nom_commune" in result.columns and "nom_commune_cadastre" in result.columns:
-        result["nom_commune"] = result["nom_commune"].where(
-            result["nom_commune"].notna(),
-            result["nom_commune_cadastre"],
-        )
+    # nom_commune : toujours utiliser nom_commune_cadastre (issu de CODE_TO_COMMUNE,
+    # 100% renseigné et correctement formaté). Le champ nom_commune des owners
+    # (Koumoul) peut être en MAJUSCULES ou absent — on l'ignore pour ce champ.
+    if "nom_commune_cadastre" in result.columns:
+        result["nom_commune"] = result["nom_commune_cadastre"]
         result = result.drop(columns=["nom_commune_cadastre"])
-    elif "nom_commune_cadastre" in result.columns:
-        result = result.rename(columns={"nom_commune_cadastre": "nom_commune"})
+    elif "nom_commune" not in result.columns:
+        result["nom_commune"] = None
 
     if include_without_owner:
         count_with_owner = result["denomination"].notna().sum() if "denomination" in result.columns else 0

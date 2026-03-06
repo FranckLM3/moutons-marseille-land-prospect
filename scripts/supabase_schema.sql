@@ -98,8 +98,9 @@ GRANT EXECUTE ON FUNCTION public.parcelles_by_communes TO anon, authenticated;
 
 -- ============================================================
 -- Fonction RPC : parcelles_dans_corridor
--- Retourne les parcelles dont le centroïde est à moins de
+-- Retourne les parcelles dont la géométrie est à moins de
 -- radius_km km d'une polyligne GeoJSON (tracé d'itinéraire).
+-- Utilise ST_DWithin sur geom directement (bénéficie de l'index GIST).
 -- Appelée depuis app.js > computeRoute()
 -- ============================================================
 DROP FUNCTION IF EXISTS public.parcelles_dans_corridor(text, double precision, double precision);
@@ -139,7 +140,7 @@ AS $$
     FROM public.parcelles p
     WHERE (min_prairie = 0 OR COALESCE(p.prairie_m2, 0) >= min_prairie)
       AND ST_DWithin(
-            ST_Centroid(p.geom)::geography,
+            p.geom::geography,
             ST_GeomFromGeoJSON(route_geojson)::geography,
             radius_km * 1000
           )

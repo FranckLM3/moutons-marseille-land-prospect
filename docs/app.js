@@ -1110,7 +1110,8 @@ async function computeRoute(keepSelected = false) {
 
     // 5. Affichage carte
     _clearRouteLayers();
-    // Ne pas toucher à currentLayer (couche filtre) — les deux coexistent
+    // Effacer les parcelles du filtre (onglet carte) pour ne garder que l'itinéraire
+    if (currentLayer) { map.removeLayer(currentLayer); currentLayer = null; }
 
     routeLayer = L.geoJSON(routeGeojson, {
       style: { color: '#4ade80', weight: 4, opacity: 0.85, dashArray: '8 4' }

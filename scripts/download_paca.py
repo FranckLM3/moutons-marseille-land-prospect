@@ -100,7 +100,7 @@ def download_cadastre_dept(dept: str, output_dir: Path, skip_existing: bool = Tr
             skipped += 1
             continue
 
-        url = f"{BASE_CADASTRE_URL}/{code}/cadastre-{code}-parcelles.json.gz"
+        url = f"{BASE_CADASTRE_URL}/{dept}/{code}/cadastre-{code}-parcelles.json.gz"
         try:
             with urllib.request.urlopen(url, timeout=30) as resp:
                 gz_data = resp.read()

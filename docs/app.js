@@ -905,6 +905,103 @@ async function geocode(address) {
   return result;
 }
 
+// ── Autocomplete adresse (API adresse data.gouv.fr) ───────────────────────
+function setupAddressAutocomplete(input) {
+  let _acTimer = null;
+  let _acList  = null;
+
+  function removeDropdown() {
+    if (_acList) { _acList.remove(); _acList = null; }
+  }
+
+  function buildDropdown(items) {
+    removeDropdown();
+    if (!items.length) return;
+    const ul = document.createElement('ul');
+    ul.style.cssText = [
+      'position:absolute','z-index:9999','background:#1e293b',
+      'border:1px solid #334155','border-radius:6px','list-style:none',
+      'margin:2px 0 0','padding:0','min-width:100%','max-height:220px',
+      'overflow-y:auto','box-shadow:0 4px 16px rgba(0,0,0,.6)',
+      'font-size:12px',
+    ].join(';');
+
+    items.forEach(item => {
+      const li = document.createElement('li');
+      li.textContent = item.label;
+      li.style.cssText = 'padding:7px 10px;cursor:pointer;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis';
+      li.addEventListener('mouseenter', () => li.style.background = '#334155');
+      li.addEventListener('mouseleave', () => li.style.background = '');
+      li.addEventListener('mousedown', e => {
+        e.preventDefault(); // évite blur avant click
+        input.value = item.label;
+        removeDropdown();
+      });
+      ul.appendChild(li);
+    });
+
+    // Positionner sous l'input
+    const wrap = input.closest('.ac-wrap') || input.parentElement;
+    wrap.style.position = 'relative';
+    wrap.appendChild(ul);
+    _acList = ul;
+  }
+
+  input.addEventListener('input', () => {
+    const q = input.value.trim();
+    clearTimeout(_acTimer);
+    if (q.length < 2) { removeDropdown(); return; }
+    _acTimer = setTimeout(async () => {
+      try {
+        const url = `https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(q)}&limit=6&autocomplete=1`;
+        const r = await fetch(url);
+        const d = await r.json();
+        const items = (d.features || []).map(f => ({
+          label: f.properties.label,
+        }));
+        buildDropdown(items);
+      } catch(_) { removeDropdown(); }
+    }, 250);
+  });
+
+  input.addEventListener('blur', () => {
+    // Léger délai pour laisser le mousedown se déclencher
+    setTimeout(removeDropdown, 150);
+  });
+
+  input.addEventListener('keydown', e => {
+    if (!_acList) return;
+    const items = [..._acList.querySelectorAll('li')];
+    const cur   = items.findIndex(li => li.style.background === 'rgb(51, 65, 85)');
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      const next = items[(cur + 1) % items.length];
+      items.forEach(li => li.style.background = '');
+      next.style.background = '#334155';
+      input.value = next.textContent;
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      const prev = items[(cur - 1 + items.length) % items.length];
+      items.forEach(li => li.style.background = '');
+      prev.style.background = '#334155';
+      input.value = prev.textContent;
+    } else if (e.key === 'Enter' || e.key === 'Tab') {
+      removeDropdown();
+    } else if (e.key === 'Escape') {
+      removeDropdown();
+    }
+  });
+}
+
+// Appliquer l'autocomplete aux champs fixes au démarrage de la page
+document.addEventListener('DOMContentLoaded', () => {
+  ['route-start', 'route-end'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) setupAddressAutocomplete(el);
+  });
+});
+
+
 function haversine(a, b) {
   const R = 6371;
   const dLat = (b.lat - a.lat) * Math.PI / 180;
@@ -1133,8 +1230,12 @@ async function computeRoute(keepSelected = false) {
     // Exclure les parcelles déjà sélectionnées + filtrer par type de propriétaire
     const displayCandidates = candidateParcels.filter(p => {
       if (selectedIds.has(p.id)) return false;
-      if (ownerFilter === 'public') return p.feature.properties.proprietaire_type === 'public';
-      if (ownerFilter === 'prive')  return p.feature.properties.proprietaire_type === 'prive';
+      if (ownerFilter !== 'tous') {
+        const t = p.feature.properties.proprietaire_type;
+        if (ownerFilter === 'semi-public') return t === 'semi-public';
+        if (ownerFilter === 'public')      return t === 'public';
+        if (ownerFilter === 'prive')       return t === 'privé' || t === 'prive';
+      }
       return true; // 'tous'
     });
 
@@ -1315,12 +1416,15 @@ function addWaypointField() {
   div.id = id;
   div.style.cssText = 'display:flex;gap:4px;align-items:flex-start;margin-bottom:6px';
   div.innerHTML = `
-    <div style="flex:1">
+    <div style="flex:1" class="ac-wrap">
       <input class="route-input waypoint-input" placeholder="Étape : adresse ou lieu…" style="width:100%" />
       <div class="route-status"></div>
     </div>
     <button onclick="removeWaypointField('${id}')" style="background:none;border:none;color:#555;font-size:16px;cursor:pointer;padding:5px 2px;line-height:1;margin-top:1px" title="Supprimer">✕</button>`;
   document.getElementById('waypoints-list').appendChild(div);
+  // Activer l'autocomplete sur le nouvel input
+  const inp = div.querySelector('.waypoint-input');
+  if (inp) setupAddressAutocomplete(inp);
 }
 
 function removeWaypointField(id) {

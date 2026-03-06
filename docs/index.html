@@ -105,6 +105,10 @@
 
         <div class="filter-section">
           <label>Communes</label>
+          <div style="display:flex;gap:4px;margin-bottom:5px">
+            <button class="btn btn-ghost" style="font-size:10px;padding:3px 8px" onclick="selectAllCommunes()">Toutes</button>
+            <button class="btn btn-ghost" style="font-size:10px;padding:3px 8px" onclick="deselectAllCommunes()">Aucune</button>
+          </div>
           <div class="commune-search-wrap">
             <input type="text" id="commune-search" placeholder="Rechercher une commune…" oninput="filterCommuneChips(this.value)" />
           </div>
@@ -115,8 +119,8 @@
         <div class="filter-section">
           <label>Surface pâturable min.</label>
           <div class="slider-row">
-            <input type="range" id="area-slider" min="0" max="20000" value="5000" step="500" />
-            <span id="area-value">5 000 m²</span>
+            <input type="range" id="area-slider" min="0" max="50000" value="5000" step="500" />
+            <span id="area-value">5 000 m²</span>
           </div>
         </div>
 
@@ -207,7 +211,9 @@
 
         <label class="filter-section" style="display:block">
           <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#60a5fa;display:block;margin-bottom:4px">📍 Point A — Départ</span>
-          <input class="route-input" id="route-start" placeholder="Ex : 13 rue de la Paix, Marseille" />
+          <div class="ac-wrap" style="position:relative">
+            <input class="route-input" id="route-start" placeholder="Ex : 13 rue de la Paix, Marseille" />
+          </div>
           <div class="route-status" id="status-start"></div>
         </label>
 
@@ -219,7 +225,9 @@
 
         <label class="filter-section" style="display:block">
           <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#f87171;display:block;margin-bottom:4px">🏁 Point B — Arrivée</span>
-          <input class="route-input" id="route-end" placeholder="Ex : Col de la Gineste, Marseille" />
+          <div class="ac-wrap" style="position:relative">
+            <input class="route-input" id="route-end" placeholder="Ex : Col de la Gineste, Marseille" />
+          </div>
           <div class="route-status" id="status-end"></div>
         </label>
 
@@ -227,32 +235,36 @@
         <h2>Critères des parcelles</h2>
 
         <div class="filter-section">
-          <label>Surface pâturable min. <span id="rte-area-val" style="color:#4ade80">2 000 m²</span></label>
+          <label>Surface pâturable min. <span id="rte-area-val" style="color:#4ade80">5 000 m²</span></label>
           <div class="slider-row">
-            <input type="range" id="rte-area" min="0" max="20000" value="2000" step="500"
+            <input type="range" id="rte-area" min="0" max="50000" value="5000" step="500"
               oninput="document.getElementById('rte-area-val').textContent=Number(this.value).toLocaleString('fr')+' m²'" />
+          </div>
           </div>
         </div>
 
         <div class="filter-section">
           <label>Rayon autour du trajet <span id="rte-radius-val" style="color:#4ade80">2 km</span></label>
           <div class="slider-row">
-            <input type="range" id="rte-radius" min="0.5" max="5" value="2" step="0.5"
+            <input type="range" id="rte-radius" min="1" max="5" value="2" step="1"
               oninput="document.getElementById('rte-radius-val').textContent=this.value+' km'" />
           </div>
         </div>
 
         <div class="filter-section">
           <label>Type de propriétaire</label>
-          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">
-            <label style="display:flex;align-items:center;gap:4px;font-weight:normal;cursor:pointer">
-              <input type="radio" name="rte-owner" value="tous" checked /> Tous
+          <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px">
+            <label class="filter-inline" style="flex:1;min-width:60px;justify-content:center;border:1px solid #333;border-radius:6px;padding:4px 6px;cursor:pointer">
+              <input type="radio" name="rte-owner" value="tous" checked style="margin-right:4px" />Tous
             </label>
-            <label style="display:flex;align-items:center;gap:4px;font-weight:normal;cursor:pointer">
-              <input type="radio" name="rte-owner" value="public" /> 🏛 Public
+            <label class="filter-inline" style="flex:1;min-width:60px;justify-content:center;border:1px solid #333;border-radius:6px;padding:4px 6px;cursor:pointer">
+              <input type="radio" name="rte-owner" value="public" style="margin-right:4px" />🏛️ Public
             </label>
-            <label style="display:flex;align-items:center;gap:4px;font-weight:normal;cursor:pointer">
-              <input type="radio" name="rte-owner" value="prive" /> 🏠 Privé
+            <label class="filter-inline" style="flex:1;min-width:80px;justify-content:center;border:1px solid #333;border-radius:6px;padding:4px 6px;cursor:pointer">
+              <input type="radio" name="rte-owner" value="semi-public" style="margin-right:4px" />🏢 Semi-pub.
+            </label>
+            <label class="filter-inline" style="flex:1;min-width:60px;justify-content:center;border:1px solid #333;border-radius:6px;padding:4px 6px;cursor:pointer">
+              <input type="radio" name="rte-owner" value="prive" style="margin-right:4px" />🔒 Privé
             </label>
           </div>
         </div>

@@ -41,7 +41,7 @@ ALTER TABLE parcelles
 UPDATE parcelles
 SET geom = ST_MakeValid(
              ST_ReducePrecision(
-               ST_SimplifyPreserveTopology(geom, 0.00008),
+               ST_SimplifyPreserveTopology(ST_MakeValid(geom), 0.00008),
                0.00001
              )
            )
@@ -51,7 +51,7 @@ WHERE id <= (SELECT percentile_disc(0.25) WITHIN GROUP (ORDER BY id) FROM parcel
 UPDATE parcelles
 SET geom = ST_MakeValid(
              ST_ReducePrecision(
-               ST_SimplifyPreserveTopology(geom, 0.00008),
+               ST_SimplifyPreserveTopology(ST_MakeValid(geom), 0.00008),
                0.00001
              )
            )
@@ -62,7 +62,7 @@ WHERE id > (SELECT percentile_disc(0.25) WITHIN GROUP (ORDER BY id) FROM parcell
 UPDATE parcelles
 SET geom = ST_MakeValid(
              ST_ReducePrecision(
-               ST_SimplifyPreserveTopology(geom, 0.00008),
+               ST_SimplifyPreserveTopology(ST_MakeValid(geom), 0.00008),
                0.00001
              )
            )
@@ -73,7 +73,7 @@ WHERE id > (SELECT percentile_disc(0.50) WITHIN GROUP (ORDER BY id) FROM parcell
 UPDATE parcelles
 SET geom = ST_MakeValid(
              ST_ReducePrecision(
-               ST_SimplifyPreserveTopology(geom, 0.00008),
+               ST_SimplifyPreserveTopology(ST_MakeValid(geom), 0.00008),
                0.00001
              )
            )

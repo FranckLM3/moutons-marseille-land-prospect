@@ -24,7 +24,15 @@ FROM parcelles;
 ALTER TABLE parcelles DROP COLUMN IF EXISTS area_ha;
 ALTER TABLE parcelles DROP COLUMN IF EXISTS prairie_m2;
 
--- ── Étape 2 : simplifier les géométries ──────────────────────────────────
+-- ── Étape 2a : relâcher le type de colonne ───────────────────────────────
+-- ST_SimplifyPreserveTopology peut produire un MultiPolygon quand deux parties
+-- d'un polygone se séparent à la simplification. La contrainte Polygon(4326)
+-- rejette ces géométries → on passe en geometry(Geometry, 4326).
+ALTER TABLE parcelles
+  ALTER COLUMN geom TYPE geometry(Geometry, 4326)
+  USING geom::geometry(Geometry, 4326);
+
+-- ── Étape 2b : simplifier les géométries ─────────────────────────────────
 -- Tolérance 0.00008° ≈ 8 m en WGS84 à lat 43°N → suffisant pour visualisation web
 -- ST_ReducePrecision : arrondi à 5 décimales (≈ 1 m), réduit le stockage WKB
 -- Exécuter en 4 lots pour éviter timeout (chaque lot ~90K lignes, ~30-60s)

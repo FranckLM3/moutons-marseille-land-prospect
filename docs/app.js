@@ -1238,15 +1238,14 @@ async function computeRoute(keepSelected = false) {
 
     const minArea   = parseInt(document.getElementById('rte-area').value);
     const radiusKm  = parseFloat(document.getElementById('rte-radius').value);
-    const ownerFilter = document.querySelector('input[name="rte-owner"]:checked')?.value || 'tous';
+    const orsProfile = document.querySelector('input[name="rte-mode"]:checked')?.value || 'foot-hiking';
     const orsKey   = window.ORS_API_KEY || '';
     const selectedIds = new Set(selectedParcels.map(p => p.id));
 
     // 2. Calcul du tracé de base A → étapes fixes → B pour obtenir la polyligne réelle
     setRouteStatus('Calcul du tracé de base…', '');
-    console.log('[computeRoute] géocodage OK, ptA:', ptA, 'ptB:', ptB, 'orsKey:', orsKey ? 'présente' : 'ABSENTE');
     const baseWaypoints = [ptA, ...fixedWaypoints, ptB];
-    const baseRes = await fetch('https://api.openrouteservice.org/v2/directions/foot-hiking/geojson', {
+    const baseRes = await fetch(`https://api.openrouteservice.org/v2/directions/${orsProfile}/geojson`, {
       method: 'POST',
       headers: { 'Authorization': orsKey, 'Content-Type': 'application/json; charset=utf-8', 'Accept': 'application/json, application/geo+json' },
       body: JSON.stringify({ coordinates: baseWaypoints.map(p => [p.lng, p.lat]) })
@@ -1292,7 +1291,7 @@ async function computeRoute(keepSelected = false) {
 
     // 5. Appel ORS final avec toutes les étapes
     setRouteStatus('Calcul de l\'itinéraire final…', '');
-    const orsRes = await fetch('https://api.openrouteservice.org/v2/directions/foot-hiking/geojson', {
+    const orsRes = await fetch(`https://api.openrouteservice.org/v2/directions/${orsProfile}/geojson`, {
       method: 'POST',
       headers: {
         'Authorization': orsKey,
@@ -1384,17 +1383,19 @@ async function computeRoute(keepSelected = false) {
     const fixedStepsHtml = fixedWaypoints.map((wp, i) => `
       <div class="route-step">
         <div class="route-step-num" style="background:#a78bfa">${i+1}</div>
-        <div class="route-step-info"><div class="route-step-name">${wp.label.split(',')[0]}</div><div class="route-step-meta">Étape fixe</div></div>
+        <div class="route-step-info"><div class="route-step-name">${escapeHtml(wp.label.split(',')[0])}</div><div class="route-step-meta">Étape fixe</div></div>
       </div>`).join('');
 
     const stepsHtml = orderedSelected.map((p, i) => {
-      const props = p.feature.properties || {};
-      const name  = props.denomination || 'Parcelle sans propriétaire';
-      const comm  = props.nom_commune  || '';
-      const pct   = props.pct_prairie  != null ? `${props.pct_prairie}% pâturable` : '';
-      const area  = props.prairie_m2   != null ? `${Number(props.prairie_m2).toLocaleString('fr')} m² pât.` : '';
-      const fid   = (p.id || '').replace(/'/g, "\\'");
-      const num   = fixedWaypoints.length + i + 1;
+      const props   = p.feature.properties || {};
+      const name    = escapeHtml(props.denomination || 'Parcelle sans propriétaire');
+      const comm    = escapeHtml(props.nom_commune  || '');
+      const pct     = props.pct_prairie != null ? `${props.pct_prairie}% pâturable` : '';
+      const pm2raw  = props.prairie_m2 != null ? props.prairie_m2
+                    : Math.round((props.area_m2 || 0) * (props.pct_prairie || 0) / 100);
+      const area    = pm2raw > 0 ? `${Number(pm2raw).toLocaleString('fr')} m² pât.` : '';
+      const fid     = escapeForAttr(p.id || '');
+      const num     = fixedWaypoints.length + i + 1;
       return `<div class="route-step" onclick="map.setView([${p.center.lat},${p.center.lng}],15)">
         <div class="route-step-num">${num}</div>
         <div class="route-step-info">
@@ -1409,23 +1410,28 @@ async function computeRoute(keepSelected = false) {
       ? `<div style="font-size:10px;color:#fb923c;margin:6px 0 2px;text-align:center">🟠 ${displayCandidates.length} parcelle${displayCandidates.length>1?'s':''} disponible${displayCandidates.length>1?'s':''} — cliquer sur la carte pour ajouter</div>`
       : '';
 
+    // Stocker le tracé pour export GPX
+    window._lastRouteCoords = orsData.features[0].geometry.coordinates;
+    window._lastRouteInfo   = { distKm, durStr, startAddr, endAddr };
+
     document.getElementById('route-result').innerHTML = `
       <div class="route-summary">
         <span><strong>${distKm} km</strong>distance</span>
         <span><strong>${durStr}</strong>durée est.</span>
         <span><strong>${fixedWaypoints.length + orderedSelected.length}</strong>étape${(fixedWaypoints.length+orderedSelected.length)!==1?'s':''}</span>
       </div>
+      <button onclick="exportGPX()" style="width:100%;margin:6px 0 2px;padding:6px 0;background:rgba(96,165,250,0.15);border:1px solid #60a5fa;color:#60a5fa;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer">⬇ Exporter GPX</button>
       ${candidateHint}
       <div class="route-steps">
         <div class="route-step">
           <div class="route-step-num start">A</div>
-          <div class="route-step-info"><div class="route-step-name">Départ</div><div class="route-step-meta">${startAddr}</div></div>
+          <div class="route-step-info"><div class="route-step-name">Départ</div><div class="route-step-meta">${escapeHtml(startAddr)}</div></div>
         </div>
         ${fixedStepsHtml}
         ${stepsHtml}
         <div class="route-step">
           <div class="route-step-num end">B</div>
-          <div class="route-step-info"><div class="route-step-name">Arrivée</div><div class="route-step-meta">${endAddr}</div></div>
+          <div class="route-step-info"><div class="route-step-name">Arrivée</div><div class="route-step-meta">${escapeHtml(endAddr)}</div></div>
         </div>
       </div>`;
 
@@ -1492,6 +1498,32 @@ function setRouteStatus(msg, cls) {
   if (!el) return;
   el.textContent = msg;
   el.className = 'route-status' + (cls ? ' ' + cls : '');
+}
+
+// ── Export GPX ───────────────────────────────────────────────────────────
+function exportGPX() {
+  const coords = window._lastRouteCoords;
+  if (!coords || !coords.length) { alert('Aucun itinéraire à exporter.'); return; }
+  const info = window._lastRouteInfo || {};
+  const trkpts = coords.map(([lng, lat, ele]) =>
+    `    <trkpt lat="${lat}" lon="${lng}">${ele != null ? `<ele>${ele}</ele>` : ''}</trkpt>`
+  ).join('\n');
+  const gpx = `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="Moutons Marseillais" xmlns="http://www.topografix.com/GPX/1/1">
+  <metadata><name>${escapeHtml(info.startAddr || 'Départ')} → ${escapeHtml(info.endAddr || 'Arrivée')}</name></metadata>
+  <trk>
+    <name>Moutons Marseillais — ${escapeHtml(info.distKm || '')} km</name>
+    <trkseg>
+${trkpts}
+    </trkseg>
+  </trk>
+</gpx>`;
+  const blob = new Blob([gpx], { type: 'application/gpx+xml' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'moutons-marseillais.gpx';
+  a.click();
+  URL.revokeObjectURL(a.href);
 }
 
 // ── Export CSV ────────────────────────────────────────────────────────────

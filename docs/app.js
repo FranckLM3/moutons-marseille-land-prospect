@@ -1092,7 +1092,6 @@ function projectionOnPolyline(p, coords) {
     segLengths.push(l);
     totalLen += l;
   }
-  let cumLen = 0;
   for (let i = 0; i < coords.length - 1; i++) {
     const t = projectionOnSegment(p, coords[i], coords[i + 1]);
     const proj = { lat: coords[i].lat + t*(coords[i+1].lat - coords[i].lat), lng: coords[i].lng + t*(coords[i+1].lng - coords[i].lng) };
@@ -1329,10 +1328,9 @@ async function computeRoute(keepSelected = false) {
       {
         style: { fillColor: '#fb923c', fillOpacity: 0.45, color: '#fb923c', weight: 1.5, opacity: 0.8 },
         onEachFeature: (feature, layer) => {
-          const fid    = feature.properties?.id || '';
-          const fidEsc = fid.replace(/'/g, "\\'");
+          const fid = feature.properties?.id || '';
           layer.bindPopup(() => {
-            const fidEsc = fid.replace(/'/g, "\\'");
+            const fidEsc = escapeForAttr(fid);
             const btn = `<div style="padding:0 0 6px">
               <button onclick="addParcelToRoute('${fidEsc}')"
                 style="width:100%;padding:8px 0;background:#fb923c;color:#111;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer">

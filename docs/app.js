@@ -170,9 +170,15 @@ function getParcelFeedback(parcelId) {
 }
 
 function escapeForAttr(value) {
+  // Pour les contextes onclick="func('${val}')": JS-escape d'abord (protège le
+  // string literal JS), puis encode < et > pour l'attribut HTML.
+  // NE PAS utiliser &#39; ici : le parser HTML décode les entités avant que le
+  // moteur JS n'exécute l'handler, ce qui annule la protection.
   return String(value)
-    .replace(/&/g, '&amp;').replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'")
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 }
 
 function escapeHtml(value) {

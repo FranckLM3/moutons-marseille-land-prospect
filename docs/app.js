@@ -757,7 +757,6 @@ function buildPopup(feature) {
     ? Number(p.prairie_m2)
     : Math.round((p.area_m2 || 0) * (p.pct_prairie || 0) / 100);
   const prairieM2 = `${rawPrairieM2.toLocaleString('fr')} m²`;
-  const pct       = p.pct_prairie != null ? `${p.pct_prairie} %` : '0 %';
   const own       = p.denomination || '—';
   const commune   = p.nom_commune  || '—';
   // Titre contextuel : propriétaire si connu, sinon commune
@@ -767,8 +766,12 @@ function buildPopup(feature) {
   const parcelIdEsc = escapeForAttr(parcelId);
   const domId = makeDomId(parcelId);
   const feedback = getParcelFeedback(parcelId);
-  const feedbackLabel = feedback.status === 'yes' ? '✅ Pâturable' : feedback.status === 'no' ? '🚫 Non pâturable' : '⏺️ Avis non défini';
+  const feedbackLabel = feedback.status === 'yes' ? 'Pâturable' : feedback.status === 'no' ? 'Non pâturable' : 'Non évalué';
   const feedbackTagClass = feedback.status === 'yes' ? 'tag-green' : feedback.status === 'no' ? 'tag-red' : 'tag-gray';
+
+  // Barre de prairie
+  const pctNum = p.pct_prairie != null ? Math.round(p.pct_prairie) : 0;
+  const pctLabel = `${pctNum} %`;
 
   // Détail végétation (masqué par défaut)
   let csDetailRows = '';
@@ -779,9 +782,9 @@ function buildPopup(feature) {
       csDetailRows = entries.map(([code, m2]) => {
         const label = CS_LABELS[code] || code;
         const note = code === 'CS2.1.1.2'
-          ? ' <span style="color:#f97316;font-size:0.8em">(non pâturable)</span>'
+          ? ' <span style="color:#f97316;font-size:0.85em">(non pâturable)</span>'
           : '';
-        return `<span class="k" style="padding-left:16px;color:#555">${label}${note}</span><span class="v" style="color:#aaa">${Number(m2).toLocaleString('fr')} m²</span>`;
+        return `<span class="k" style="padding-left:12px;font-size:11px">${label}${note}</span><span class="v" style="font-size:11px;color:#94a3b8">${Number(m2).toLocaleString('fr')} m²</span>`;
       }).join('');
     }
   } catch(_) {}
@@ -795,13 +798,13 @@ function buildPopup(feature) {
   const feedbackTag = `<span id="tag-${domId}" class="tag ${feedbackTagClass}">${feedbackLabel}</span>`;
 
   const PROP_TYPE_CLASSES = { 'public': 'tag-green', 'semi-public': 'tag-orange', 'privé': 'tag-gray', 'indéterminé': 'tag-gray' };
-  const PROP_TYPE_LABELS  = { 'public': '🏛️ Public', 'semi-public': '🏢 Semi-public', 'privé': '🔒 Privé', 'indéterminé': '❓ Inconnu' };
+  const PROP_TYPE_LABELS  = { 'public': 'Public', 'semi-public': 'Semi-public', 'privé': 'Privé', 'indéterminé': 'Inconnu' };
   const propType = p.proprietaire_type || null;
   const propTypeTag = propType
     ? `<span class="tag ${PROP_TYPE_CLASSES[propType] || 'tag-gray'}">${PROP_TYPE_LABELS[propType] || propType}</span>`
     : '';
 
-  // Section "détails techniques" repliable
+  // Détails techniques repliables
   const technicalDetails = [
     p.siren ? `<span class="k">SIREN</span><span class="v" style="color:#94a3b8">${escapeHtml(String(p.siren))}</span>` : '',
     csDetailRows,
@@ -811,38 +814,48 @@ function buildPopup(feature) {
     <button class="popup-details-toggle" onclick="
       const d=document.getElementById('pd-${domId}');
       d.classList.toggle('open');
-      this.textContent=d.classList.contains('open')?'▲ Masquer les détails':'▼ Voir les détails techniques';
-    ">▼ Voir les détails techniques</button>
+      this.textContent=d.classList.contains('open')?'Masquer les détails':'Voir les détails techniques';
+    ">Voir les détails techniques</button>
     <div class="popup-details" id="pd-${domId}">
-      <div class="popup-grid" style="margin-top:4px">${technicalDetails}</div>
-      ${p.siren ? `<div style="margin-top:6px"><a class="popup-link" href="https://annuaire-entreprises.data.gouv.fr/entreprise/${p.siren}" target="_blank" rel="noopener">🔍 Fiche entreprise →</a></div>` : ''}
+      <div class="popup-grid" style="margin-top:6px">${technicalDetails}</div>
+      ${p.siren ? `<div style="margin-top:8px"><a class="popup-link" href="https://annuaire-entreprises.data.gouv.fr/entreprise/${p.siren}" target="_blank" rel="noopener">Fiche entreprise →</a></div>` : ''}
     </div>` : '';
 
-  const gmapsLink = gmaps ? `<a class="popup-link" href="${gmaps}" target="_blank" rel="noopener">📍 Voir sur Google Maps →</a>` : '';
+  const gmapsLink = gmaps ? `<a class="popup-link" href="${gmaps}" target="_blank" rel="noopener">Voir sur Google Maps →</a>` : '';
 
   return `
-    <div class="popup-body">
+    <div class="popup-header">
       <div class="popup-title">${popupTitle}</div>
-      <div class="popup-grid">
-        <span class="k">Commune</span>       <span class="v">${escapeHtml(commune)}</span>
-        <span class="k">Surface</span>       <span class="v">${totalM2}</span>
-        <span class="k">Prairie</span>       <span class="v">${prairieM2} · ${pct}</span>
-        <span class="k">Propriétaire</span>  <span class="v">${escapeHtml(own)}</span>
+      <div class="popup-commune">${escapeHtml(commune)}</div>
+    </div>
+    <div class="popup-prairie-bar">
+      <div class="popup-prairie-pct">${pctLabel}</div>
+      <div class="popup-prairie-detail">
+        <div class="popup-prairie-m2">${prairieM2} de prairie</div>
+        <div class="popup-prairie-sub">sur ${totalM2} de surface totale</div>
+        <div class="popup-prairie-bar-track">
+          <div class="popup-prairie-bar-fill" style="width:${Math.min(pctNum,100)}%"></div>
+        </div>
       </div>
-      <div class="popup-tags">${feedbackTag}${propTypeTag}</div>
+    </div>
+    <div class="popup-body">
+      <div class="popup-grid">
+        <span class="k">Propriétaire</span><span class="v">${escapeHtml(own)}</span>
+      </div>
+      <div class="popup-tags" style="margin-top:8px">${feedbackTag}${propTypeTag}</div>
       ${detailsToggle}
       <div class="popup-feedback">
-        <div class="popup-feedback-title">Mon avis sur ce terrain</div>
+        <div class="popup-feedback-title">Mon avis</div>
         <div class="popup-feedback-status" id="status-${domId}">${feedbackLabel}</div>
         <div class="popup-feedback-actions">
-          <button class="popup-feedback-btn ${feedback.status === 'yes' ? 'active' : ''}" data-feedback-id="${domId}" data-status="yes" onclick="setParcelStatus('${parcelIdEsc}', 'yes')">✅ Pâturable</button>
-          <button class="popup-feedback-btn ${feedback.status === 'no' ? 'active' : ''}" data-feedback-id="${domId}" data-status="no" onclick="setParcelStatus('${parcelIdEsc}', 'no')">🚫 Non</button>
-          <button class="popup-feedback-btn ${feedback.status === 'unknown' ? 'active' : ''}" data-feedback-id="${domId}" data-status="unknown" onclick="setParcelStatus('${parcelIdEsc}', 'unknown')">⏺️ Indécis</button>
+          <button class="popup-feedback-btn ${feedback.status === 'yes' ? 'active' : ''}" onclick="setParcelStatus('${parcelIdEsc}', 'yes')">Pâturable</button>
+          <button class="popup-feedback-btn ${feedback.status === 'no' ? 'active' : ''}" onclick="setParcelStatus('${parcelIdEsc}', 'no')">Non</button>
+          <button class="popup-feedback-btn ${feedback.status === 'unknown' ? 'active' : ''}" onclick="setParcelStatus('${parcelIdEsc}', 'unknown')">Indécis</button>
         </div>
         <div class="popup-comment-list" id="comments-${domId}">${renderCommentsHtml(parcelId)}</div>
         <div class="popup-comment-form">
           <input id="commenter-${domId}" class="popup-comment-input" placeholder="Votre nom (facultatif)" />
-          <textarea id="comment-${domId}" class="popup-feedback-text" rows="3" placeholder="Commentaire : accès, clôture, état du terrain…" maxlength="500"></textarea>
+          <textarea id="comment-${domId}" class="popup-feedback-text" rows="3" placeholder="Accès, clôture, état du terrain…" maxlength="500"></textarea>
           <button class="popup-feedback-save" onclick="addParcelComment('${parcelIdEsc}')">Enregistrer</button>
         </div>
       </div>
@@ -1436,7 +1449,7 @@ async function computeRoute(keepSelected = false) {
       const pm2raw  = props.prairie_m2 != null ? props.prairie_m2
                     : Math.round((props.area_m2 || 0) * (props.pct_prairie || 0) / 100);
       // Capacité : 1 mouton ≈ 150 m²/jour en prairie
-      const moutons = pm2raw > 0 ? `🐑×${Math.floor(pm2raw / 150)}` : '';
+      const moutons = pm2raw > 0 ? `~${Math.floor(pm2raw / 150)} moutons/j` : '';
       const stepIdx = fixedWaypoints.length + i; // index dans allWaypts (après ptA)
       const dkm     = stepDistKm[stepIdx] != null ? `${stepDistKm[stepIdx].toFixed(1)} km` : '';
       const fid     = escapeForAttr(p.id || '');
@@ -1452,7 +1465,7 @@ async function computeRoute(keepSelected = false) {
     }).join('');
 
     const candidateHint = displayCandidates.length
-      ? `<div style="font-size:10px;color:#fb923c;margin:6px 0 2px;text-align:center">🟠 ${displayCandidates.length} parcelle${displayCandidates.length>1?'s':''} disponible${displayCandidates.length>1?'s':''} — cliquer sur la carte pour ajouter</div>`
+      ? `<div style="font-size:11px;color:var(--orange,#fb923c);margin:8px 0 2px;text-align:center;font-weight:600">${displayCandidates.length} terrain${displayCandidates.length>1?'s':''} disponible${displayCandidates.length>1?'s':''} — cliquez sur la carte pour ajouter</div>`
       : '';
 
     // Stocker le tracé pour export GPX
@@ -1465,8 +1478,8 @@ async function computeRoute(keepSelected = false) {
         <span><strong>~${troupeauDays} j</strong>troupeau</span>
         <span><strong>${ascent > 0 ? '+'+ascent+'m' : durStr}</strong>${ascent > 0 ? 'dénivelé' : 'durée'}</span>
       </div>
-      <div style="font-size:10px;color:#64748b;text-align:center;margin-bottom:4px">↑${ascent} m · ↓${descent} m · ~3 km/h troupeau</div>
-      <button onclick="exportGPX()" style="width:100%;margin:4px 0 4px;padding:6px 0;background:rgba(96,165,250,0.15);border:1px solid #60a5fa;color:#60a5fa;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer">⬇ Exporter GPX</button>
+      <div style="font-size:11px;color:var(--text-lo,#64748b);text-align:center;margin-bottom:6px">+${ascent} m / −${descent} m · 3 km/h (troupeau)</div>
+      <button onclick="exportGPX()" style="width:100%;margin:4px 0 6px;padding:9px 0;background:rgba(96,165,250,0.1);border:1px solid rgba(96,165,250,0.3);color:#60a5fa;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">Exporter GPX</button>
       ${candidateHint}
       <div class="route-steps">
         <div class="route-step">
@@ -1494,7 +1507,7 @@ async function computeRoute(keepSelected = false) {
     console.error('[computeRoute] erreur:', err);
     setRouteStatus('Erreur : ' + err.message, 'err');
   } finally {
-    btn.disabled = false; btn.textContent = '🐑 Calculer';
+    btn.disabled = false; btn.textContent = "Calculer l'itinéraire";
   }
 }
 

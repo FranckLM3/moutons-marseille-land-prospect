@@ -62,8 +62,30 @@ def postgrest_headers():
     }
 
 
+def _simplify_geom(geom: dict, decimal_places: int = 5) -> dict:
+    """Arrondit les coordonnées GeoJSON à `decimal_places` décimales.
+
+    Réduit la taille du payload envoyé à Supabase (~40% de gain sur les polygones).
+    5 décimales ≈ précision 1 m — suffisant pour usage pastoral.
+    """
+    def round_coord(c):
+        if isinstance(c[0], list):
+            return [round_coord(x) for x in c]
+        return [round(c[0], decimal_places), round(c[1], decimal_places)]
+
+    result = dict(geom)
+    if "coordinates" in result:
+        result["coordinates"] = round_coord(result["coordinates"])
+    return result
+
+
 def feature_to_row(feat: dict) -> dict | None:
-    """Convertit un feature GeoJSON en ligne Supabase."""
+    """Convertit un feature GeoJSON en ligne Supabase.
+
+    - Supprime area_ha (redondant avec area_m2 / 10000)
+    - Supprime prairie_m2 (redondant, calculé dans le RPC)
+    - Arrondit les coordonnées à 5 décimales (≈1 m) pour réduire le stockage
+    """
     props = feat.get("properties") or {}
     geom  = feat.get("geometry")
     if not geom:
@@ -74,16 +96,14 @@ def feature_to_row(feat: dict) -> dict | None:
     return {
         "id":           str(fid),
         "area_m2":      props.get("area_m2"),
-        "area_ha":      props.get("area_ha"),
         "denomination": props.get("denomination"),
         "siren":        str(props["siren"]) if props.get("siren") else None,
         "nom_commune":       props.get("nom_commune") or "",
         "pct_prairie":       props.get("pct_prairie"),
-        "prairie_m2":        props.get("prairie_m2"),
         "cs_detail":         props.get("cs_detail"),
         "proprietaire_type": props.get("proprietaire_type"),
-        # Géométrie en GeoJSON string — convertie côté Supabase via ST_GeomFromGeoJSON
-        "geom_geojson":      json.dumps(geom),
+        # Géométrie arrondie à 5 décimales (≈1 m) avant envoi
+        "geom_geojson":      json.dumps(_simplify_geom(geom, decimal_places=5)),
     }
 
 

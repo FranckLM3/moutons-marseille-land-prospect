@@ -170,7 +170,15 @@ function getParcelFeedback(parcelId) {
 }
 
 function escapeForAttr(value) {
-  return String(value).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  return String(value)
+    .replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 function makeDomId(value) {
@@ -232,10 +240,10 @@ function renderCommentsHtml(parcelId) {
   return comments.map(comment => `
     <div class="popup-comment-item">
       <div class="popup-comment-head">
-        <span class="popup-comment-author">${comment.author || 'Anonyme'}</span>
+        <span class="popup-comment-author">${escapeHtml(comment.author || 'Anonyme')}</span>
         <span class="popup-comment-date">${formatCommentDate(comment.createdAt)}</span>
       </div>
-      <div class="popup-comment-text">${comment.message}</div>
+      <div class="popup-comment-text">${escapeHtml(comment.message)}</div>
     </div>
   `).join('');
 }
@@ -631,7 +639,9 @@ function getFiltered() {
     const p = f.properties || {};
     const c = (p.nom_commune || '').trim();
     if (!selectedCommunes.has(c)) return false;
-    if (minAreaHa > 0 && (p.prairie_m2 || 0) < minAreaHa * 10000) return false;
+    // prairie_m2 peut être absent (colonne supprimée en DB) → calcul local
+    const prairie_m2 = p.prairie_m2 != null ? p.prairie_m2 : (p.area_m2 || 0) * (p.pct_prairie || 0) / 100;
+    if (minAreaHa > 0 && prairie_m2 < minAreaHa * 10000) return false;
     if (showValidatedOnly) {
       const parcelId = getParcelId(f);
       if (getLocalFeedbackStatus(parcelId) !== 'yes') return false;
@@ -671,7 +681,11 @@ function _renderFilters() {
     }
   }
 
-  const totalHa   = filtered.reduce((s, f) => s + (f.properties?.prairie_m2 || 0), 0) / 10000;
+  const totalHa   = filtered.reduce((s, f) => {
+    const p = f.properties || {};
+    const pm2 = p.prairie_m2 != null ? p.prairie_m2 : (p.area_m2 || 0) * (p.pct_prairie || 0) / 100;
+    return s + pm2;
+  }, 0) / 10000;
   const withOwner = filtered.filter(f => f.properties?.denomination).length;
   const pct       = filtered.length ? Math.round(withOwner / filtered.length * 100) : 0;
 
@@ -727,10 +741,16 @@ async function resetFilters() {
 function buildPopup(feature) {
   const p = feature.properties || {};
   const totalM2   = p.area_m2    != null ? `${Number(p.area_m2).toLocaleString('fr')} m²` : '—';
-  const prairieM2 = p.prairie_m2 != null ? `${Number(p.prairie_m2).toLocaleString('fr')} m²` : '0 m²';
+  // prairie_m2 peut être absent après migration DB — calcul local depuis area_m2 × pct_prairie
+  const rawPrairieM2 = p.prairie_m2 != null
+    ? Number(p.prairie_m2)
+    : Math.round((p.area_m2 || 0) * (p.pct_prairie || 0) / 100);
+  const prairieM2 = `${rawPrairieM2.toLocaleString('fr')} m²`;
   const pct       = p.pct_prairie != null ? `${p.pct_prairie} %` : '0 %';
   const own       = p.denomination || '—';
   const commune   = p.nom_commune  || '—';
+  // Titre contextuel : propriétaire si connu, sinon commune
+  const popupTitle = p.denomination ? escapeHtml(p.denomination) : escapeHtml(commune);
 
   const parcelId = getParcelId(feature);
   const parcelIdEsc = escapeForAttr(parcelId);
@@ -779,9 +799,9 @@ function buildPopup(feature) {
 
   return `
     <div class="popup-body">
-      <div class="popup-title">Terrain pâturable</div>
+      <div class="popup-title">${popupTitle}</div>
       <div class="popup-grid">
-        <span class="k">Commune</span>       <span class="v">${commune}</span>
+        <span class="k">Commune</span>       <span class="v">${escapeHtml(commune)}</span>
         <span class="k">Surface totale</span><span class="v">${totalM2}</span>
         <span class="k">Végét. pâturable</span>  <span class="v">${prairieM2} · ${pct}</span>
         ${csRows}
@@ -799,7 +819,7 @@ function buildPopup(feature) {
         <div class="popup-comment-list" id="comments-${domId}">${renderCommentsHtml(parcelId)}</div>
         <div class="popup-comment-form">
           <input id="commenter-${domId}" class="popup-comment-input" placeholder="Nom du contributeur" />
-          <textarea id="comment-${domId}" class="popup-feedback-text" rows="3" placeholder="Commentaire (terrain, accès, clôture…)"></textarea>
+          <textarea id="comment-${domId}" class="popup-feedback-text" rows="3" placeholder="Commentaire (terrain, accès, clôture…)" maxlength="500"></textarea>
         <button class="popup-feedback-save" onclick="addParcelComment('${parcelIdEsc}')">Ajouter</button>
         </div>
       </div>
@@ -935,6 +955,10 @@ function setupAddressAutocomplete(input) {
       li.addEventListener('mousedown', e => {
         e.preventDefault(); // évite blur avant click
         input.value = item.label;
+        // Pré-remplir le cache geocode avec les coords BAN → évite un appel Nominatim
+        if (item.lat != null && item.lng != null) {
+          geocodeCache[item.label] = { lat: item.lat, lng: item.lng, label: item.label };
+        }
         removeDropdown();
       });
       ul.appendChild(li);
@@ -958,6 +982,8 @@ function setupAddressAutocomplete(input) {
         const d = await r.json();
         const items = (d.features || []).map(f => ({
           label: f.properties.label,
+          lat: f.geometry.coordinates[1],
+          lng: f.geometry.coordinates[0],
         }));
         buildDropdown(items);
       } catch(_) { removeDropdown(); }
@@ -1011,8 +1037,8 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   const rteArea = document.getElementById('rte-area');
   if (rteArea) {
-    rteArea.value = 5000;
-    document.getElementById('rte-area-val').textContent = '5 000 m²';
+    rteArea.value = 2000;
+    document.getElementById('rte-area-val').textContent = '2 000 m²';
   }
 });
 

@@ -1307,10 +1307,15 @@ async function computeRoute(keepSelected = false) {
     routeCoords = orsData.features[0].geometry.coordinates.map(([lng, lat]) => ({ lat, lng }));
 
     const routeGeojson = orsData.features[0].geometry;
-    const distKm = (orsData.features[0].properties.summary.distance / 1000).toFixed(1);
-    const durMin = Math.round(orsData.features[0].properties.summary.duration / 60);
-    const durH   = Math.floor(durMin / 60);
-    const durStr = durH > 0 ? `${durH}h${String(durMin % 60).padStart(2,'0')}` : `${durMin} min`;
+    const distKm  = (orsData.features[0].properties.summary.distance / 1000).toFixed(1);
+    // Vitesse troupeau ~3 km/h (vs 5 km/h randonneur solo)
+    const troupeauDurMin = Math.round((orsData.features[0].properties.summary.distance / 1000) / 3 * 60);
+    const troupeauDays   = (orsData.features[0].properties.summary.distance / 1000 / 20).toFixed(1); // ~20 km/jour
+    const durH  = Math.floor(troupeauDurMin / 60);
+    const durStr = durH > 0 ? `${durH}h${String(troupeauDurMin % 60).padStart(2,'0')}` : `${troupeauDurMin} min`;
+    // Dénivelé depuis ORS (ascent/descent en mètres)
+    const ascent  = Math.round(orsData.features[0].properties.summary.ascent  || 0);
+    const descent = Math.round(orsData.features[0].properties.summary.descent || 0);
 
     // 5. Affichage carte
     _clearRouteLayers();
@@ -1386,21 +1391,33 @@ async function computeRoute(keepSelected = false) {
         <div class="route-step-info"><div class="route-step-name">${escapeHtml(wp.label.split(',')[0])}</div><div class="route-step-meta">Étape fixe</div></div>
       </div>`).join('');
 
+    // Distances cumulées entre étapes le long du tracé ORS
+    const allWaypts = [ptA, ...fixedWaypoints, ...orderedSelected.map(p => p.center), ptB];
+    const stepDistKm = allWaypts.slice(0,-1).map((_, i) => {
+      if (routeCoords.length < 2) return null;
+      const projA = projectionOnPolyline(allWaypts[i],   routeCoords);
+      const projB = projectionOnPolyline(allWaypts[i+1], routeCoords);
+      return Math.abs(projB - projA) * parseFloat(distKm);
+    });
+
     const stepsHtml = orderedSelected.map((p, i) => {
       const props   = p.feature.properties || {};
       const name    = escapeHtml(props.denomination || 'Parcelle sans propriétaire');
       const comm    = escapeHtml(props.nom_commune  || '');
-      const pct     = props.pct_prairie != null ? `${props.pct_prairie}% pâturable` : '';
+      const pct     = props.pct_prairie != null ? `${props.pct_prairie}%` : '';
       const pm2raw  = props.prairie_m2 != null ? props.prairie_m2
                     : Math.round((props.area_m2 || 0) * (props.pct_prairie || 0) / 100);
-      const area    = pm2raw > 0 ? `${Number(pm2raw).toLocaleString('fr')} m² pât.` : '';
+      // Capacité : 1 mouton ≈ 150 m²/jour en prairie
+      const moutons = pm2raw > 0 ? `🐑×${Math.floor(pm2raw / 150)}` : '';
+      const stepIdx = fixedWaypoints.length + i; // index dans allWaypts (après ptA)
+      const dkm     = stepDistKm[stepIdx] != null ? `${stepDistKm[stepIdx].toFixed(1)} km` : '';
       const fid     = escapeForAttr(p.id || '');
       const num     = fixedWaypoints.length + i + 1;
       return `<div class="route-step" onclick="map.setView([${p.center.lat},${p.center.lng}],15)">
         <div class="route-step-num">${num}</div>
         <div class="route-step-info">
           <div class="route-step-name">${name}</div>
-          <div class="route-step-meta">${[comm,pct,area].filter(Boolean).join(' · ')}</div>
+          <div class="route-step-meta">${[comm, pct, moutons, dkm].filter(Boolean).join(' · ')}</div>
         </div>
         <button class="route-step-exclude" title="Retirer de l'itinéraire" onclick="event.stopPropagation();removeParcelFromRoute('${fid}')">✕</button>
       </div>`;
@@ -1417,10 +1434,11 @@ async function computeRoute(keepSelected = false) {
     document.getElementById('route-result').innerHTML = `
       <div class="route-summary">
         <span><strong>${distKm} km</strong>distance</span>
-        <span><strong>${durStr}</strong>durée est.</span>
-        <span><strong>${fixedWaypoints.length + orderedSelected.length}</strong>étape${(fixedWaypoints.length+orderedSelected.length)!==1?'s':''}</span>
+        <span><strong>~${troupeauDays} j</strong>troupeau</span>
+        <span><strong>${ascent > 0 ? '+'+ascent+'m' : durStr}</strong>${ascent > 0 ? 'dénivelé' : 'durée'}</span>
       </div>
-      <button onclick="exportGPX()" style="width:100%;margin:6px 0 2px;padding:6px 0;background:rgba(96,165,250,0.15);border:1px solid #60a5fa;color:#60a5fa;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer">⬇ Exporter GPX</button>
+      <div style="font-size:10px;color:#64748b;text-align:center;margin-bottom:4px">↑${ascent} m · ↓${descent} m · ~3 km/h troupeau</div>
+      <button onclick="exportGPX()" style="width:100%;margin:4px 0 4px;padding:6px 0;background:rgba(96,165,250,0.15);border:1px solid #60a5fa;color:#60a5fa;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer">⬇ Exporter GPX</button>
       ${candidateHint}
       <div class="route-steps">
         <div class="route-step">

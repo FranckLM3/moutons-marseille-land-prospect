@@ -177,6 +177,7 @@ function escapeForAttr(value) {
   return String(value)
     .replace(/\\/g, '\\\\')
     .replace(/'/g, "\\'")
+    .replace(/"/g, '&quot;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
 }

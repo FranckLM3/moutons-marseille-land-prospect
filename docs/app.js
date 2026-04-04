@@ -63,10 +63,19 @@ function initSupabaseClient() {
   const url = window.SUPABASE_URL || '';
   const key = window.SUPABASE_ANON_KEY || '';
   if (!url || !key || url.includes('__SUPABASE_URL__') || key.includes('__SUPABASE_ANON_KEY__')) {
+    console.warn('[supabase] variables non configurées');
     return null;
   }
-  if (!window.supabase || !window.supabase.createClient) return null;
-  return window.supabase.createClient(url, key);
+  if (!window.supabase || !window.supabase.createClient) {
+    console.warn('[supabase] window.supabase non disponible — CDN non chargé ?', window.supabase);
+    return null;
+  }
+  try {
+    return window.supabase.createClient(url, key);
+  } catch(e) {
+    console.error('[supabase] createClient erreur:', e);
+    return null;
+  }
 }
 
 function supabaseEnabled() {
@@ -361,13 +370,23 @@ async function initData() {
   document.getElementById('loading').style.display = 'flex';
 
   if (!supabaseEnabled()) {
+    const hasVars = (window.SUPABASE_URL || '').length > 0 && !(window.SUPABASE_URL || '').includes('__');
+    const hasCDN  = Boolean(window.supabase);
+    const cause = !hasCDN
+      ? 'Le script Supabase n\'a pas pu être chargé (vérifiez votre connexion internet).'
+      : !hasVars
+      ? 'Les variables SUPABASE_URL / SUPABASE_ANON_KEY ne sont pas injectées.'
+      : 'Erreur à l\'initialisation du client — consultez la console du navigateur.';
     document.getElementById('loading').innerHTML = `
-      <div style="color:#f87171;font-size:20px;">⚠️</div>
-      <p style="color:#666;max-width:320px;text-align:center;line-height:1.6">
-        Connexion Supabase non configurée.<br>
-        Vérifiez les variables <code style="color:#4ade80">SUPABASE_URL</code>
-        et <code style="color:#4ade80">SUPABASE_ANON_KEY</code>.
-      </p>`;
+      <div style="max-width:340px;text-align:center">
+        <div style="font-size:32px;margin-bottom:12px;color:#f87171">⚑</div>
+        <p style="color:#f87171;font-weight:700;font-size:14px;margin-bottom:8px">Connexion impossible</p>
+        <p style="color:#64748b;font-size:12px;line-height:1.6;margin-bottom:16px">${cause}</p>
+        <button onclick="location.reload()"
+          style="padding:9px 24px;background:#4ade80;color:#111;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer">
+          Réessayer
+        </button>
+      </div>`;
     return;
   }
 

@@ -34,30 +34,45 @@ ALTER TABLE parcelles
 
 -- ── Étape 2b : simplifier les géométries ─────────────────────────────────
 -- Tolérance 0.00008° ≈ 8 m en WGS84 à lat 43°N → suffisant pour visualisation web
--- ST_ReducePrecision : arrondi à 5 décimales (≈ 1 m), réduit le stockage WKB
 -- Exécuter en 4 lots pour éviter timeout (chaque lot ~90K lignes, ~30-60s)
+-- Les ~15 géométries non simplifiables sont identifiées d'abord et exclues.
+
+-- Identifier les géométries problématiques (résultat de simplification invalide)
+CREATE TEMP TABLE _bad_geom_ids AS
+SELECT id FROM parcelles
+WHERE NOT ST_IsValid(
+  ST_SimplifyPreserveTopology(ST_MakeValid(geom), 0.00008)
+);
+-- Afficher pour info
+SELECT count(*) AS nb_geoms_exclues FROM _bad_geom_ids;
 
 -- Lot 1
 UPDATE parcelles
 SET geom = ST_MakeValid(ST_SimplifyPreserveTopology(ST_MakeValid(geom), 0.00008))
-WHERE id <= (SELECT percentile_disc(0.25) WITHIN GROUP (ORDER BY id) FROM parcelles);
+WHERE id <= (SELECT percentile_disc(0.25) WITHIN GROUP (ORDER BY id) FROM parcelles)
+  AND id NOT IN (SELECT id FROM _bad_geom_ids);
 
 -- Lot 2
 UPDATE parcelles
 SET geom = ST_MakeValid(ST_SimplifyPreserveTopology(ST_MakeValid(geom), 0.00008))
 WHERE id > (SELECT percentile_disc(0.25) WITHIN GROUP (ORDER BY id) FROM parcelles)
-  AND id <= (SELECT percentile_disc(0.50) WITHIN GROUP (ORDER BY id) FROM parcelles);
+  AND id <= (SELECT percentile_disc(0.50) WITHIN GROUP (ORDER BY id) FROM parcelles)
+  AND id NOT IN (SELECT id FROM _bad_geom_ids);
 
 -- Lot 3
 UPDATE parcelles
 SET geom = ST_MakeValid(ST_SimplifyPreserveTopology(ST_MakeValid(geom), 0.00008))
 WHERE id > (SELECT percentile_disc(0.50) WITHIN GROUP (ORDER BY id) FROM parcelles)
-  AND id <= (SELECT percentile_disc(0.75) WITHIN GROUP (ORDER BY id) FROM parcelles);
+  AND id <= (SELECT percentile_disc(0.75) WITHIN GROUP (ORDER BY id) FROM parcelles)
+  AND id NOT IN (SELECT id FROM _bad_geom_ids);
 
 -- Lot 4
 UPDATE parcelles
 SET geom = ST_MakeValid(ST_SimplifyPreserveTopology(ST_MakeValid(geom), 0.00008))
-WHERE id > (SELECT percentile_disc(0.75) WITHIN GROUP (ORDER BY id) FROM parcelles);
+WHERE id > (SELECT percentile_disc(0.75) WITHIN GROUP (ORDER BY id) FROM parcelles)
+  AND id NOT IN (SELECT id FROM _bad_geom_ids);
+
+DROP TABLE _bad_geom_ids;
 
 -- ── Étape 3 : mettre à jour le RPC parcelles_by_communes ─────────────────
 -- Il faut recalculer prairie_m2 à la volée puisqu'on a supprimé la colonne

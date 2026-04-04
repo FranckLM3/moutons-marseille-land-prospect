@@ -16,6 +16,22 @@
 </head>
 <body>
 
+<!-- Overlay de bienvenue — affiché une seule fois (localStorage) -->
+<div id="welcome-overlay">
+  <div id="welcome-card">
+    <div class="wc-sheep">🐑</div>
+    <h2>Bienvenue !</h2>
+    <p>Cette carte vous aide à trouver des <strong>terrains pour faire pâturer votre troupeau</strong> dans la métropole Aix-Marseille-Provence.</p>
+    <ul>
+      <li>Filtrez par commune et surface de prairie</li>
+      <li>Cliquez sur un terrain pour voir son propriétaire</li>
+      <li>Calculez un itinéraire de transhumance</li>
+      <li>Notez les terrains et laissez des commentaires</li>
+    </ul>
+    <button id="welcome-close" onclick="closeWelcome()">Commencer la prospection →</button>
+  </div>
+</div>
+
 <div id="loading">
   <div class="sheep">🐑</div>
   <p>Chargement des terrains…</p>
@@ -58,7 +74,7 @@
       <div class="ocs-legend-row"><span class="ocs-swatch ocs-cs2112"></span> CS2.1.1.2 — Conifères <span class="ocs-note">non retenu</span></div>
       <div class="ocs-legend-row"><span class="ocs-swatch ocs-cs222"></span> CS2.2.2 — Autres non ligneuses</div>
     </div>
-    <p class="map-info-note">Astuce : vous pouvez filtrer par commune et surface dans le panneau de gauche.</p>
+    <p class="map-info-note">Astuce : filtrez par commune et surface prairie dans le panneau de gauche. Cliquez sur un terrain pour voir le propriétaire et laisser un avis.</p>
   </div>
 </div>
 
@@ -87,15 +103,15 @@
         <div style="display:flex;justify-content:space-around">
           <div class="stat">
             <div class="value" id="count-total">—</div>
-            <div class="label">total</div>
+            <div class="label">terrains</div>
           </div>
           <div class="stat">
             <div class="value" id="count-visible">—</div>
-            <div class="label">filtrées</div>
+            <div class="label">visibles</div>
           </div>
           <div class="stat">
             <div class="value" id="stat-ha" style="font-size:14px">—</div>
-            <div class="label">ha pât.</div>
+            <div class="label">ha prairie</div>
           </div>
         </div>
       </div>
@@ -120,7 +136,7 @@
         </div>
 
         <div class="filter-section">
-          <label>Surface pâturable min.</label>
+          <label>Prairie minimum</label>
           <div class="slider-row">
             <input type="range" id="area-slider" min="0" max="20000" value="5000" step="500" />
             <span id="area-value">5 000 m²</span>
@@ -130,14 +146,14 @@
         <div class="filter-section">
           <label class="filter-inline">
             <input type="checkbox" id="validated-only" />
-            Afficher uniquement les parcelles validées (✅)
+            Uniquement les terrains validés (✅)
           </label>
         </div>
 
         <div class="filter-section">
           <label class="filter-inline">
             <input type="checkbox" id="owner-known-only" />
-            Afficher uniquement les parcelles avec propriétaire connu
+            Uniquement les terrains avec propriétaire connu
           </label>
         </div>
 
@@ -172,13 +188,13 @@
         <div class="filter-section">
           <label class="filter-inline">
             <input type="checkbox" id="toggle-ocs" />
-            Afficher l'OCS GE complet
+            Afficher la carte de végétation (OCS GE)
           </label>
         </div>
 
         <div class="filter-section ocs-legend-panel" aria-live="polite">
-          <label>Légende OCS GE</label>
-          <div class="ocs-legend-list" id="ocs-legend-list">Activez l'OCS GE pour charger la légende…</div>
+          <label>Carte de végétation (OCS GE)</label>
+          <div class="ocs-legend-list" id="ocs-legend-list">Activez pour charger la légende…</div>
         </div>
 
         <div class="btn-row">
@@ -189,16 +205,23 @@
         </div>
       </div>
 
+      <!-- État vide — affiché quand aucun terrain ne correspond aux filtres -->
+      <div id="empty-state">
+        <div class="empty-state-icon">🔍</div>
+        <div class="empty-state-title">Aucun terrain trouvé</div>
+        <div class="empty-state-sub">Essayez de réduire la prairie minimum<br>ou de sélectionner d'autres communes.</div>
+      </div>
+
       <hr class="sidebar-divider" />
 
       <!-- Légende -->
       <div class="sidebar-section">
-        <h2>🌱 % Pâturable</h2>
+        <h2>🌱 % Prairie</h2>
         <div class="legend-gradient-bar"></div>
         <div class="legend-gradient-labels"><span>0 %</span><span>50 %</span><span>100 %</span></div>
-        <div style="display:flex;align-items:center;gap:6px;margin-top:6px;font-size:10px;color:#555">
+        <div style="display:flex;align-items:center;gap:6px;margin-top:6px;font-size:11px;color:#666">
           <span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:#94a3b8;flex-shrink:0"></span>
-          0 % — sol minéral, bâti, route…
+          0 % — minéral, bâti, route…
         </div>
       </div>
 
@@ -210,6 +233,17 @@
       <div class="sidebar-section" style="padding-top:8px">
 
         <hr class="sidebar-divider" style="margin-top:0" />
+
+        <!-- Guide d'utilisation -->
+        <div class="route-guide">
+          <ol>
+            <li><strong>Saisissez</strong> un point de départ et d'arrivée</li>
+            <li><strong>Cliquez</strong> sur 🐑 Calculer</li>
+            <li><strong>Cliquez</strong> sur les terrains 🟠 pour les ajouter</li>
+            <li><strong>Recalculez</strong> pour mettre à jour l'itinéraire</li>
+          </ol>
+        </div>
+
         <h2>Départ / Arrivée</h2>
 
         <label class="filter-section" style="display:block">
@@ -234,7 +268,7 @@
         <h2>Critères des parcelles</h2>
 
         <div class="filter-section">
-          <label>Surface pâturable min. <span id="rte-area-val" style="color:#4ade80">2 000 m²</span></label>
+          <label>Prairie minimum <span id="rte-area-val" style="color:#4ade80">2 000 m²</span></label>
           <div class="slider-row">
             <input type="range" id="rte-area" min="0" max="20000" value="2000" step="500"
               oninput="document.getElementById('rte-area-val').textContent=Number(this.value).toLocaleString('fr')+' m²'" />

@@ -700,6 +700,10 @@ function _renderFilters() {
   document.getElementById('count-visible').textContent = filtered.length.toLocaleString('fr');
   document.getElementById('stat-ha').textContent       = totalHa.toLocaleString('fr', { maximumFractionDigits: 0 }) + ' ha';
   document.getElementById('stat-pct').textContent      = pct + '%';
+
+  // État vide
+  const emptyEl = document.getElementById('empty-state');
+  if (emptyEl) emptyEl.classList.toggle('visible', filtered.length === 0 && allFeatures.length > 0);
 }
 
 // Debounce pour applyFilters (évite les rafales lors du clic sur plusieurs communes)
@@ -766,15 +770,14 @@ function buildPopup(feature) {
   const feedbackLabel = feedback.status === 'yes' ? '✅ Pâturable' : feedback.status === 'no' ? '🚫 Non pâturable' : '⏺️ Avis non défini';
   const feedbackTagClass = feedback.status === 'yes' ? 'tag-green' : feedback.status === 'no' ? 'tag-red' : 'tag-gray';
 
-  // Détail par type de couverture
-  let csRows = '';
+  // Détail végétation (masqué par défaut)
+  let csDetailRows = '';
   try {
     const detail = typeof p.cs_detail === 'string' ? JSON.parse(p.cs_detail) : (p.cs_detail || {});
     const entries = Object.entries(detail).sort((a, b) => b[1] - a[1]);
     if (entries.length) {
-      csRows = entries.map(([code, m2]) => {
+      csDetailRows = entries.map(([code, m2]) => {
         const label = CS_LABELS[code] || code;
-        // CS2.1.1.2 = conifères (pins) : sol pauvre, risque incendie — non comptabilisé dans % pâturable
         const note = code === 'CS2.1.1.2'
           ? ' <span style="color:#f97316;font-size:0.8em">(non pâturable)</span>'
           : '';
@@ -789,7 +792,6 @@ function buildPopup(feature) {
     gmaps = `https://www.google.com/maps?q=${c.lat.toFixed(6)},${c.lng.toFixed(6)}`;
   } catch(_) {}
 
-  const sirenTag = p.siren ? `<span class="tag tag-blue">SIREN&nbsp;${p.siren}</span>` : '';
   const feedbackTag = `<span id="tag-${domId}" class="tag ${feedbackTagClass}">${feedbackLabel}</span>`;
 
   const PROP_TYPE_CLASSES = { 'public': 'tag-green', 'semi-public': 'tag-orange', 'privé': 'tag-gray', 'indéterminé': 'tag-gray' };
@@ -799,24 +801,38 @@ function buildPopup(feature) {
     ? `<span class="tag ${PROP_TYPE_CLASSES[propType] || 'tag-gray'}">${PROP_TYPE_LABELS[propType] || propType}</span>`
     : '';
 
-  const links = [
-    p.siren ? `<a class="popup-link" href="https://annuaire-entreprises.data.gouv.fr/entreprise/${p.siren}" target="_blank" rel="noopener">🔍 Fiche entreprise →</a>` : '',
-    gmaps   ? `<a class="popup-link" href="${gmaps}" target="_blank" rel="noopener">📍 Google Maps →</a>` : '',
+  // Section "détails techniques" repliable
+  const technicalDetails = [
+    p.siren ? `<span class="k">SIREN</span><span class="v" style="color:#94a3b8">${escapeHtml(String(p.siren))}</span>` : '',
+    csDetailRows,
   ].filter(Boolean).join('');
+
+  const detailsToggle = technicalDetails ? `
+    <button class="popup-details-toggle" onclick="
+      const d=document.getElementById('pd-${domId}');
+      d.classList.toggle('open');
+      this.textContent=d.classList.contains('open')?'▲ Masquer les détails':'▼ Voir les détails techniques';
+    ">▼ Voir les détails techniques</button>
+    <div class="popup-details" id="pd-${domId}">
+      <div class="popup-grid" style="margin-top:4px">${technicalDetails}</div>
+      ${p.siren ? `<div style="margin-top:6px"><a class="popup-link" href="https://annuaire-entreprises.data.gouv.fr/entreprise/${p.siren}" target="_blank" rel="noopener">🔍 Fiche entreprise →</a></div>` : ''}
+    </div>` : '';
+
+  const gmapsLink = gmaps ? `<a class="popup-link" href="${gmaps}" target="_blank" rel="noopener">📍 Voir sur Google Maps →</a>` : '';
 
   return `
     <div class="popup-body">
       <div class="popup-title">${popupTitle}</div>
       <div class="popup-grid">
         <span class="k">Commune</span>       <span class="v">${escapeHtml(commune)}</span>
-        <span class="k">Surface totale</span><span class="v">${totalM2}</span>
-        <span class="k">Végét. pâturable</span>  <span class="v">${prairieM2} · ${pct}</span>
-        ${csRows}
-        <span class="k">Propriétaire</span>  <span class="v">${own}</span>
+        <span class="k">Surface</span>       <span class="v">${totalM2}</span>
+        <span class="k">Prairie</span>       <span class="v">${prairieM2} · ${pct}</span>
+        <span class="k">Propriétaire</span>  <span class="v">${escapeHtml(own)}</span>
       </div>
-      <div class="popup-tags">${feedbackTag}${propTypeTag}${sirenTag}</div>
+      <div class="popup-tags">${feedbackTag}${propTypeTag}</div>
+      ${detailsToggle}
       <div class="popup-feedback">
-        <div class="popup-feedback-title">Avis contributeurs</div>
+        <div class="popup-feedback-title">Mon avis sur ce terrain</div>
         <div class="popup-feedback-status" id="status-${domId}">${feedbackLabel}</div>
         <div class="popup-feedback-actions">
           <button class="popup-feedback-btn ${feedback.status === 'yes' ? 'active' : ''}" data-feedback-id="${domId}" data-status="yes" onclick="setParcelStatus('${parcelIdEsc}', 'yes')">✅ Pâturable</button>
@@ -825,13 +841,13 @@ function buildPopup(feature) {
         </div>
         <div class="popup-comment-list" id="comments-${domId}">${renderCommentsHtml(parcelId)}</div>
         <div class="popup-comment-form">
-          <input id="commenter-${domId}" class="popup-comment-input" placeholder="Nom du contributeur" />
-          <textarea id="comment-${domId}" class="popup-feedback-text" rows="3" placeholder="Commentaire (terrain, accès, clôture…)" maxlength="500"></textarea>
-        <button class="popup-feedback-save" onclick="addParcelComment('${parcelIdEsc}')">Ajouter</button>
+          <input id="commenter-${domId}" class="popup-comment-input" placeholder="Votre nom (facultatif)" />
+          <textarea id="comment-${domId}" class="popup-feedback-text" rows="3" placeholder="Commentaire : accès, clôture, état du terrain…" maxlength="500"></textarea>
+          <button class="popup-feedback-save" onclick="addParcelComment('${parcelIdEsc}')">Enregistrer</button>
         </div>
       </div>
     </div>
-    ${links ? `<div class="popup-footer">${links}</div>` : ''}`;
+    ${gmapsLink ? `<div class="popup-footer">${gmapsLink}</div>` : ''}`;
 }
 
 // ── Onglets sidebar ───────────────────────────────────────────────────────
@@ -1026,8 +1042,29 @@ function setupAddressAutocomplete(input) {
   });
 }
 
+// ── Welcome overlay ──────────────────────────────────────────────────────
+function closeWelcome() {
+  const el = document.getElementById('welcome-overlay');
+  if (el) el.classList.add('hidden');
+  try { localStorage.setItem('welcome-seen-v1', '1'); } catch(_) {}
+}
+
+function _initWelcome() {
+  let seen = false;
+  try { seen = Boolean(localStorage.getItem('welcome-seen-v1')); } catch(_) {}
+  const el = document.getElementById('welcome-overlay');
+  if (!el) return;
+  if (seen) {
+    el.classList.add('hidden');
+  }
+  // Fermer en cliquant sur le fond
+  el.addEventListener('click', e => { if (e.target === el) closeWelcome(); });
+}
+
 // Appliquer l'autocomplete aux champs fixes au démarrage de la page
 document.addEventListener('DOMContentLoaded', () => {
+  _initWelcome();
+
   // Autocomplete adresses
   ['route-start', 'route-end'].forEach(id => {
     const el = document.getElementById(id);
@@ -1274,16 +1311,7 @@ async function computeRoute(keepSelected = false) {
         .filter(p => p.center !== null);
     }
     // Exclure les parcelles déjà sélectionnées + filtrer par type de propriétaire
-    const displayCandidates = candidateParcels.filter(p => {
-      if (selectedIds.has(p.id)) return false;
-      if (ownerFilter !== 'tous') {
-        const t = p.feature.properties.proprietaire_type;
-        if (ownerFilter === 'semi-public') return t === 'semi-public';
-        if (ownerFilter === 'public')      return t === 'public';
-        if (ownerFilter === 'prive')       return t === 'privé' || t === 'prive';
-      }
-      return true; // 'tous'
-    });
+    const displayCandidates = candidateParcels.filter(p => !selectedIds.has(p.id));
 
     // 4. Waypoints finaux : A → étapes fixes → parcelles sélectionnées ordonnées → B
     const orderedSelected = orderAlongRoute(ptA, ptB, selectedParcels);
@@ -1457,6 +1485,10 @@ async function computeRoute(keepSelected = false) {
       ? `${orderedSelected.length} étape${orderedSelected.length>1?'s':''} · ${distKm} km · ${durStr}`
       : `Itinéraire direct · ${distKm} km · ${durStr}`;
     setRouteStatus(msg, 'ok');
+
+    // Auto-scroll vers les résultats
+    const resultEl = document.getElementById('route-result');
+    if (resultEl) setTimeout(() => resultEl.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
 
   } catch(err) {
     console.error('[computeRoute] erreur:', err);

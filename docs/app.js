@@ -1238,7 +1238,7 @@ async function computeRoute(keepSelected = false) {
 
     const minArea   = parseInt(document.getElementById('rte-area').value);
     const radiusKm  = parseFloat(document.getElementById('rte-radius').value);
-    const orsProfile = document.querySelector('input[name="rte-mode"]:checked')?.value || 'foot-hiking';
+    const orsProfile = 'foot-hiking'; // transhumance à pied
     const orsKey   = window.ORS_API_KEY || '';
     const selectedIds = new Set(selectedParcels.map(p => p.id));
 

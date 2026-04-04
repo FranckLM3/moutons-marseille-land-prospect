@@ -39,44 +39,24 @@ ALTER TABLE parcelles
 
 -- Lot 1
 UPDATE parcelles
-SET geom = ST_MakeValid(
-             ST_ReducePrecision(
-               ST_SimplifyPreserveTopology(ST_MakeValid(geom), 0.00008),
-               0.00001
-             )
-           )
+SET geom = ST_MakeValid(ST_SimplifyPreserveTopology(ST_MakeValid(geom), 0.00008))
 WHERE id <= (SELECT percentile_disc(0.25) WITHIN GROUP (ORDER BY id) FROM parcelles);
 
 -- Lot 2
 UPDATE parcelles
-SET geom = ST_MakeValid(
-             ST_ReducePrecision(
-               ST_SimplifyPreserveTopology(ST_MakeValid(geom), 0.00008),
-               0.00001
-             )
-           )
+SET geom = ST_MakeValid(ST_SimplifyPreserveTopology(ST_MakeValid(geom), 0.00008))
 WHERE id > (SELECT percentile_disc(0.25) WITHIN GROUP (ORDER BY id) FROM parcelles)
   AND id <= (SELECT percentile_disc(0.50) WITHIN GROUP (ORDER BY id) FROM parcelles);
 
 -- Lot 3
 UPDATE parcelles
-SET geom = ST_MakeValid(
-             ST_ReducePrecision(
-               ST_SimplifyPreserveTopology(ST_MakeValid(geom), 0.00008),
-               0.00001
-             )
-           )
+SET geom = ST_MakeValid(ST_SimplifyPreserveTopology(ST_MakeValid(geom), 0.00008))
 WHERE id > (SELECT percentile_disc(0.50) WITHIN GROUP (ORDER BY id) FROM parcelles)
   AND id <= (SELECT percentile_disc(0.75) WITHIN GROUP (ORDER BY id) FROM parcelles);
 
 -- Lot 4
 UPDATE parcelles
-SET geom = ST_MakeValid(
-             ST_ReducePrecision(
-               ST_SimplifyPreserveTopology(ST_MakeValid(geom), 0.00008),
-               0.00001
-             )
-           )
+SET geom = ST_MakeValid(ST_SimplifyPreserveTopology(ST_MakeValid(geom), 0.00008))
 WHERE id > (SELECT percentile_disc(0.75) WITHIN GROUP (ORDER BY id) FROM parcelles);
 
 -- ── Étape 3 : mettre à jour le RPC parcelles_by_communes ─────────────────

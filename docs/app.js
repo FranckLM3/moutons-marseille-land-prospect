@@ -317,6 +317,9 @@ L.control.layers({ 'Carte': osmLayer, 'Satellite': satellite }, {}, { position: 
 // ── Visibilité des couches (déclaré ici pour être accessible dans l'IIFE ci-dessous) ──
 const layerVisible = { terrains: false, route: true, communes: true, poi: true, vegetation: true };
 
+// Pré-charge le GeoJSON communes dès le démarrage pour éviter un délai au premier "Lancer"
+loadCommunesGeo();
+
 // ── Contrôle de visibilité des couches ───────────────────────────────────
 (function _initLayerControl() {
   const LAYERS_CONFIG = [
@@ -1756,9 +1759,18 @@ async function loadCommunesGeo() {
   if (_communesGeoCache) return _communesGeoCache;
   if (_communesGeoLoading) return _communesGeoLoading;
   _communesGeoLoading = fetch('data/geo/communes-paca.geojson')
-    .then(r => r.ok ? r.json() : null)
-    .then(data => { _communesGeoCache = data; _communesGeoLoading = null; return data; })
-    .catch(() => { _communesGeoLoading = null; return null; });
+    .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+    .then(data => {
+      _communesGeoCache = data;
+      _communesGeoLoading = null;
+      console.log(`[communes] chargé : ${data?.features?.length ?? 0} communes`);
+      return data;
+    })
+    .catch(e => {
+      console.warn('[communes] échec chargement:', e.message);
+      _communesGeoLoading = null;
+      return null;
+    });
   return _communesGeoLoading;
 }
 
@@ -1996,7 +2008,7 @@ async function extractLocalities(allCoords, onProgress) {
   onProgress(2, 3);
 
   if (!geo || kmlAbortFlag) {
-    // Fallback si le fichier statique est absent
+    console.warn('[communes] GeoJSON absent, fallback reverse geocoding');
     return _extractLocalitiesFallback(allCoords, onProgress);
   }
 
@@ -2007,6 +2019,7 @@ async function extractLocalities(allCoords, onProgress) {
     return b && b[0] <= routeBbox.maxLng && b[2] >= routeBbox.minLng &&
                b[1] <= routeBbox.maxLat && b[3] >= routeBbox.minLat;
   });
+  console.log(`[communes] candidats bbox: ${candidates.length} / ${geo.features.length}`);
 
   // Échantillonnage du tracé + point-in-polygon (purement en mémoire, zéro requête réseau)
   const sampled   = sampleRoutePoints(allCoords, 400);
@@ -2026,12 +2039,14 @@ async function extractLocalities(allCoords, onProgress) {
           dept:     _parseDept(code),
           type:     'municipality',
           lat, lng,
-          geometry: feature.geometry,   // déjà en mémoire — zéro requête API
+          geometry: feature.geometry,
         });
+        break; // un point ne peut appartenir qu'à une seule commune
       }
     }
   }
 
+  console.log(`[communes] résultat: ${results.length} communes trouvées`);
   onProgress(3, 3);
   return results;
 }
@@ -2113,7 +2128,7 @@ function kmlRenderResults(localities, totalKm, terrainCount = 0) {
     container.appendChild(item);
   });
 
-  // Fetch commune boundaries from geo.api.gouv.fr and display on map
+  // Affiche les polygones communes depuis le cache pré-chargé — zéro requête réseau
   kmlFetchAndRenderCommunePolygons(localities);
 
   if (kmlRouteLayer) {
@@ -2121,7 +2136,7 @@ function kmlRenderResults(localities, totalKm, terrainCount = 0) {
   }
 }
 
-// ── Contours communes (geo.api.gouv.fr) ──────────────────────────────────────
+// ── Contours communes (cache pré-chargé) ──────────────────────────────────────
 let kmlCommunePolygonLayer = null;
 
 function kmlFetchAndRenderCommunePolygons(localities) {
@@ -2474,12 +2489,10 @@ async function fetchOverpassPoi(overpassQuery) {
   return [];
 }
 
-function filterPoiByDistance(poiList, polyline, maxKm = 2.0) {
+function _buildPolylineCache(polyline) {
   const simplPoly = _downsampleCoords(
     polyline.map(p => [p.lng, p.lat]), 60
   ).map(([lng, lat]) => ({ lat, lng }));
-
-  // Pre-compute segment lengths once — reused by projectionOnPolyline sort below
   const segLengths = [];
   let totalLen = 0;
   for (let i = 0; i < simplPoly.length - 1; i++) {
@@ -2487,6 +2500,11 @@ function filterPoiByDistance(poiList, polyline, maxKm = 2.0) {
     segLengths.push(l);
     totalLen += l;
   }
+  return { simplPoly, segLengths, totalLen };
+}
+
+function filterPoiByDistance(poiList, polyline, maxKm = 2.0, cache = null) {
+  const { simplPoly, segLengths, totalLen } = cache || _buildPolylineCache(polyline);
 
   // Inline projection using cached lengths — avoids O(n) haversine loop per POI
   function projFast(p) {
@@ -2590,6 +2608,7 @@ function poiTypeLabel(tags) {
 async function fetchAllPoi(coords) {
   const { overpassStr } = routeBboxWithMargin(coords);
   const polyline = coords.map(([lng, lat]) => ({ lat, lng }));
+  const polyCache = _buildPolylineCache(polyline);
 
   const [eauRaw, haltesRaw, ravRaw] = await Promise.all([
     fetchOverpassPoi(POI_CATEGORIES.eau.query(overpassStr)).catch(() => []),
@@ -2598,7 +2617,7 @@ async function fetchAllPoi(coords) {
   ]);
 
   function enrich(list, cat) {
-    return filterPoiByDistance(list, polyline, 2.0).map(p => ({
+    return filterPoiByDistance(list, polyline, 2.0, polyCache).map(p => ({
       ...p,
       name:      poiDisplayName(p.tags),
       typeLabel: poiTypeLabel(p.tags),

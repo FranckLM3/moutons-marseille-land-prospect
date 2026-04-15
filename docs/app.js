@@ -1615,36 +1615,62 @@ ${trkpts}
   URL.revokeObjectURL(a.href);
 }
 
-// ── Export CSV ────────────────────────────────────────────────────────────
+// ── Export Excel (.xlsx) via SheetJS ─────────────────────────────────────
+
+/**
+ * Génère et télécharge un fichier .xlsx depuis un tableau 2D (header + rows).
+ * @param {Array<Array>} headerRow  - ligne d'en-tête
+ * @param {Array<Array>} dataRows   - lignes de données
+ * @param {string}       filename   - nom du fichier (sans extension)
+ * @param {string}       sheetName  - nom de l'onglet
+ */
+function _exportXlsx(headerRow, dataRows, filename, sheetName = 'Données') {
+  if (!window.XLSX) {
+    alert('Bibliothèque Excel non chargée. Utilisez l\'export CSV.');
+    return;
+  }
+  const aoa = [headerRow, ...dataRows];
+  const ws  = XLSX.utils.aoa_to_sheet(aoa);
+
+  // Largeur automatique : max(longueur header, max des valeurs) + 2
+  const colWidths = headerRow.map((h, ci) => {
+    const maxData = dataRows.reduce((m, r) => Math.max(m, String(r[ci] ?? '').length), 0);
+    return { wch: Math.max(String(h).length, maxData) + 2 };
+  });
+  ws['!cols'] = colWidths;
+
+  // En-tête en gras (style via SheetJS mini — limité mais fonctionnel)
+  headerRow.forEach((_, ci) => {
+    const cellAddr = XLSX.utils.encode_cell({ r: 0, c: ci });
+    if (ws[cellAddr]) ws[cellAddr].s = { font: { bold: true } };
+  });
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, sheetName);
+  XLSX.writeFile(wb, `${filename}.xlsx`);
+}
+
 function exportExcel() {
   const filtered = getFiltered();
   if (!filtered.length) { alert('Aucune zone à exporter.'); return; }
 
-  const cols = ['commune', 'surface_m2', 'prairie_m2', 'pct_prairie', 'proprietaire', 'siren', 'type_proprietaire'];
-  const rows = filtered.map(f => {
+  const header = ['Commune', 'Surface (m²)', 'Prairie (m²)', '% Prairie', 'Propriétaire', 'SIREN', 'Type propriétaire'];
+  const rows   = filtered.map(f => {
     const p = f.properties || {};
+    const pm2 = p.prairie_m2 ?? Math.round((p.area_m2 || 0) * (p.pct_prairie || 0) / 100);
     return [
-      p.nom_commune         || '',
-      p.area_m2             || '',
-      p.prairie_m2          ?? '',
-      p.pct_prairie         ?? '',
-      p.denomination        || '',
-      p.siren               || '',
-      p.proprietaire_type   || '',
+      p.nom_commune       || '',
+      p.area_m2           ?? '',
+      pm2                 || '',
+      p.pct_prairie       ?? '',
+      p.denomination      || '',
+      p.siren             || '',
+      p.proprietaire_type || '',
     ];
   });
 
-  const csv = [cols, ...rows].map(r =>
-    r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(';')
-  ).join('\n');
-
-  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
   const suffix = selectedCommunes.size === 1 ? `_${[...selectedCommunes][0]}` : '';
-  a.download = `terrains_paturables${suffix}.csv`;
-  a.click();
-  URL.revokeObjectURL(a.href);
+  _exportXlsx(header, rows, `terrains_paturables${suffix}`, 'Terrains');
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -2151,6 +2177,46 @@ function kmlExportCsv() {
   });
   document.body.appendChild(a); a.click();
   document.body.removeChild(a); URL.revokeObjectURL(url);
+}
+
+function kmlExportXlsx() {
+  if (!kmlLocalities.length && !kmlPoiData) { alert('Aucune donnée à exporter.'); return; }
+
+  const wb = window.XLSX ? XLSX.utils.book_new() : null;
+  if (!wb) { kmlExportCsv(); return; } // fallback CSV si SheetJS absent
+
+  // ── Onglet Communes ──
+  if (kmlLocalities.length) {
+    const header = ['Nom', 'Code INSEE', 'Département', 'Type', 'Latitude', 'Longitude'];
+    const rows   = kmlLocalities.map(l => [
+      l.name, l.insee || '', l.dept || '', l.type || 'commune', l.lat, l.lng
+    ]);
+    const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
+    ws['!cols'] = header.map((h, ci) => ({
+      wch: Math.max(h.length, ...rows.map(r => String(r[ci] ?? '').length)) + 2,
+    }));
+    XLSX.utils.book_append_sheet(wb, ws, 'Communes');
+  }
+
+  // ── Onglet POI (une feuille par catégorie) ──
+  if (kmlPoiData) {
+    const catLabels = { eau: '💧 Eau', haltes: '🏡 Haltes', ravitaillement: '🛒 Ravitaillement' };
+    for (const [cat, list] of Object.entries(kmlPoiData)) {
+      if (!list.length) continue;
+      const header = ['Nom', 'Type', 'Dist. tracé (km)', 'Latitude', 'Longitude', 'Tags OSM'];
+      const rows   = list.map(p => [
+        p.name, p.typeLabel, p.distKm, p.lat, p.lng,
+        Object.entries(p.tags || {}).map(([k,v]) => `${k}=${v}`).join('; ')
+      ]);
+      const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
+      ws['!cols'] = header.map((h, ci) => ({
+        wch: Math.max(h.length, ...rows.map(r => String(r[ci] ?? '').length)) + 2,
+      }));
+      XLSX.utils.book_append_sheet(wb, ws, catLabels[cat] || cat);
+    }
+  }
+
+  XLSX.writeFile(wb, 'transhumance.xlsx');
 }
 
 // ══════════════════════════════════════════════════════════════════════════════

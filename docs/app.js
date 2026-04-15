@@ -1646,3 +1646,381 @@ function exportExcel() {
   a.click();
   URL.revokeObjectURL(a.href);
 }
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Feature KML/GPX — Communes du trajet
+// ══════════════════════════════════════════════════════════════════════════════
+
+// ── État global ───────────────────────────────────────────────────────────────
+let kmlLoadedFiles  = [];   // [{ name, coords: [[lng,lat],...] }]
+let kmlLocalities   = [];   // résultat final
+let kmlMarkersLayer = null; // LayerGroup Leaflet pour les marqueurs
+let kmlRouteLayer   = null; // Polyline de prévisualisation du tracé fusionné
+let kmlAbortFlag    = false;
+
+// ── Parsing KML ───────────────────────────────────────────────────────────────
+function parseKml(text) {
+  const doc = new DOMParser().parseFromString(text, 'application/xml');
+  const coords = [];
+  doc.querySelectorAll('LineString coordinates, MultiGeometry LineString coordinates').forEach(el => {
+    const raw = el.textContent.trim();
+    raw.split(/\s+/).forEach(triplet => {
+      const parts = triplet.split(',');
+      if (parts.length >= 2) {
+        const lng = parseFloat(parts[0]), lat = parseFloat(parts[1]);
+        if (!isNaN(lng) && !isNaN(lat)) coords.push([lng, lat]);
+      }
+    });
+  });
+  return coords;
+}
+
+// ── Parsing GPX ───────────────────────────────────────────────────────────────
+function parseGpx(text) {
+  const doc = new DOMParser().parseFromString(text, 'application/xml');
+  const coords = [];
+
+  // 1. Route points
+  const rtepts = doc.querySelectorAll('rte rtept');
+  if (rtepts.length) {
+    rtepts.forEach(pt => {
+      const lat = parseFloat(pt.getAttribute('lat'));
+      const lng = parseFloat(pt.getAttribute('lon'));
+      if (!isNaN(lat) && !isNaN(lng)) coords.push([lng, lat]);
+    });
+    return coords;
+  }
+
+  // 2. Track points (multi-segments concaténés dans l'ordre)
+  const trkpts = doc.querySelectorAll('trk trkseg trkpt');
+  if (trkpts.length) {
+    trkpts.forEach(pt => {
+      const lat = parseFloat(pt.getAttribute('lat'));
+      const lng = parseFloat(pt.getAttribute('lon'));
+      if (!isNaN(lat) && !isNaN(lng)) coords.push([lng, lat]);
+    });
+    return coords;
+  }
+
+  // 3. Waypoints en dernier recours
+  doc.querySelectorAll('wpt').forEach(pt => {
+    const lat = parseFloat(pt.getAttribute('lat'));
+    const lng = parseFloat(pt.getAttribute('lon'));
+    if (!isNaN(lat) && !isNaN(lng)) coords.push([lng, lat]);
+  });
+  return coords;
+}
+
+// ── Merge et ordonnancement multi-fichiers ────────────────────────────────────
+function mergeAndOrderCoords(filesData) {
+  if (filesData.length === 1) return filesData[0].coords;
+
+  const result = [...filesData[0].coords];
+  for (let i = 1; i < filesData.length; i++) {
+    const next = filesData[i].coords;
+    if (!next.length) continue;
+    const lastPt   = result[result.length - 1];
+    const firstPt  = next[0];
+    const lastPt2  = next[next.length - 1];
+    const dFirst   = haversineMeters(lastPt[0], lastPt[1], firstPt[0], firstPt[1]);
+    const dLast    = haversineMeters(lastPt[0], lastPt[1], lastPt2[0], lastPt2[1]);
+    // Si le dernier point du tronçon est plus proche → inverser
+    const ordered  = dLast < dFirst ? [...next].reverse() : next;
+    result.push(...ordered);
+  }
+  return result;
+}
+
+// ── Haversine ─────────────────────────────────────────────────────────────────
+function haversineMeters(lng1, lat1, lng2, lat2) {
+  const R = 6371000;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat/2)**2 +
+            Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) * Math.sin(dLng/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+function totalRouteKm(coords) {
+  let dist = 0;
+  for (let i = 1; i < coords.length; i++) {
+    dist += haversineMeters(coords[i-1][0], coords[i-1][1], coords[i][0], coords[i][1]);
+  }
+  return Math.round(dist / 100) / 10;
+}
+
+// ── Échantillonnage du tracé ──────────────────────────────────────────────────
+function sampleRoutePoints(coords, stepMeters = 500) {
+  if (!coords.length) return [];
+  const result = [coords[0]];
+  let accumulated = 0;
+  for (let i = 1; i < coords.length; i++) {
+    const d = haversineMeters(coords[i-1][0], coords[i-1][1], coords[i][0], coords[i][1]);
+    accumulated += d;
+    if (accumulated >= stepMeters) {
+      result.push(coords[i]);
+      accumulated = 0;
+    }
+  }
+  const last = coords[coords.length - 1];
+  if (result[result.length - 1] !== last) result.push(last);
+  return result;
+}
+
+// ── Reverse geocoding avec double fallback ────────────────────────────────────
+async function reverseGeocodePoint(lng, lat) {
+  // Tentative 1 : api-adresse.data.gouv.fr
+  try {
+    const url = `https://api-adresse.data.gouv.fr/reverse/?lon=${lng}&lat=${lat}&limit=1`;
+    const res = await fetch(url);
+    if (res.ok) {
+      const json = await res.json();
+      const feat = json.features?.[0];
+      if (feat) {
+        const p = feat.properties;
+        const name = p.city || p.municipality || p.name;
+        if (name) {
+          const insee = p.citycode || '';
+          const dept  = _parseDept(p.postcode || insee);
+          return { name, insee, dept, type: p.type || 'municipality' };
+        }
+      }
+    }
+  } catch(_) {}
+
+  // Tentative 2 : Nominatim
+  try {
+    const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&addressdetails=1&zoom=14&accept-language=fr`;
+    const res = await fetch(url, { headers: { 'User-Agent': 'MoutonsMarseillais-TranshumanceMapper/1.0' } });
+    if (res.ok) {
+      const json = await res.json();
+      const addr = json.address || {};
+      const name = addr.village || addr.hamlet || addr.suburb || addr.town || addr.city || addr.municipality;
+      if (name) {
+        const postcode = addr.postcode || '';
+        const dept = _parseDept(postcode);
+        const type = addr.village ? 'locality'
+                   : addr.hamlet  ? 'hamlet'
+                   : addr.town    ? 'municipality'
+                   : 'municipality';
+        return { name, insee: '', dept, type };
+      }
+    }
+  } catch(_) {}
+
+  return null;
+}
+
+function _parseDept(code) {
+  if (!code) return '';
+  const s = String(code).replace(/\s/g, '');
+  if (s.startsWith('2A') || s.startsWith('2B')) return s.slice(0, 2);
+  const n = s.slice(0, 2);
+  return n || '';
+}
+
+// ── Extraction principale ─────────────────────────────────────────────────────
+async function extractLocalities(allCoords, onProgress) {
+  const sampled = sampleRoutePoints(allCoords, 500);
+  const total   = sampled.length;
+  const seen    = new Map(); // insee|name → index
+
+  const results = [];
+  for (let i = 0; i < total; i++) {
+    if (kmlAbortFlag) break;
+
+    const [lng, lat] = sampled[i];
+    onProgress(i + 1, total);
+
+    const loc = await reverseGeocodePoint(lng, lat);
+    if (loc) {
+      const key = loc.insee || loc.name;
+      if (!seen.has(key)) {
+        seen.set(key, results.length);
+        results.push({ ...loc, lat, lng });
+      }
+    }
+
+    // Rate limiting : 90ms entre requêtes
+    await new Promise(r => setTimeout(r, 90));
+  }
+  return results;
+}
+
+// ── Rendu résultats ───────────────────────────────────────────────────────────
+function kmlRenderResults(localities, totalKm) {
+  if (kmlMarkersLayer) { map.removeLayer(kmlMarkersLayer); kmlMarkersLayer = null; }
+  kmlLocalities   = localities;
+  kmlMarkersLayer = L.layerGroup().addTo(map);
+
+  localities.forEach(loc => {
+    const marker = L.circleMarker([loc.lat, loc.lng], {
+      radius: 6, color: '#4ade80', fillColor: '#4ade80',
+      fillOpacity: 0.85, weight: 2,
+    }).bindPopup(`<b>${loc.name}</b><br><small>${loc.insee || ''} · ${loc.dept || ''}</small>`);
+    kmlMarkersLayer.addLayer(marker);
+    loc._marker = marker;
+  });
+
+  const communes = localities.filter(l => l.type === 'municipality' || l.type === 'commune').length;
+  document.getElementById('kml-stat-communes').textContent = communes || localities.length;
+  document.getElementById('kml-stat-lieux').textContent    = localities.length;
+  document.getElementById('kml-stat-km').textContent       = totalKm;
+  document.getElementById('kml-stats').style.display       = 'block';
+
+  const container = document.getElementById('kml-results');
+  container.innerHTML = '';
+  localities.forEach((loc, i) => {
+    const item = document.createElement('div');
+    item.className = 'kml-locality-item';
+    item.style.animationDelay = `${i * 35}ms`;
+    item.innerHTML = `
+      <div class="kml-locality-main">
+        <span class="kml-locality-name">${escapeHtml(loc.name)}</span>
+        ${loc.dept ? `<span class="kml-badge">${escapeHtml(loc.dept)}</span>` : ''}
+      </div>
+      <div class="kml-locality-meta">
+        ${loc.insee ? `<span style="color:var(--text-lo);font-size:10px">${escapeHtml(loc.insee)}</span>` : ''}
+        ${loc.type  ? `<span style="color:var(--text-lo);font-size:10px;text-transform:capitalize">${escapeHtml(loc.type)}</span>` : ''}
+      </div>`;
+    item.addEventListener('mouseenter', () => {
+      item.classList.add('hover');
+      if (loc._marker) loc._marker.openPopup();
+      map.panTo([loc.lat, loc.lng], { animate: true, duration: 0.4 });
+    });
+    item.addEventListener('mouseleave', () => item.classList.remove('hover'));
+    container.appendChild(item);
+  });
+
+  if (kmlRouteLayer) {
+    try { map.fitBounds(kmlRouteLayer.getBounds(), { padding: [30, 30] }); } catch(_) {}
+  }
+}
+
+// ── Wiring UI ─────────────────────────────────────────────────────────────────
+function kmlUpdateFileUI() {
+  const list   = document.getElementById('kml-file-list');
+  const chips  = document.getElementById('kml-file-chips');
+  const runBtn = document.getElementById('kml-run-btn');
+  list.style.display   = kmlLoadedFiles.length ? 'block' : 'none';
+  runBtn.style.display = kmlLoadedFiles.length ? 'block' : 'none';
+  chips.innerHTML = kmlLoadedFiles.map((f, i) => `
+    <div class="kml-file-chip">
+      <span>${escapeHtml(f.name)}</span>
+      <span class="kml-file-chip-count">${f.coords.length} pts</span>
+      <button onclick="kmlRemoveFile(${i})" title="Retirer">✕</button>
+    </div>`).join('');
+}
+
+async function kmlLoadFile(file) {
+  const text  = await file.text();
+  const ext   = file.name.split('.').pop().toLowerCase();
+  let   coords = [];
+  if      (ext === 'kml') coords = parseKml(text);
+  else if (ext === 'gpx') coords = parseGpx(text);
+  if (!coords.length) { alert(`Aucun tracé trouvé dans ${file.name}`); return; }
+  kmlLoadedFiles.push({ name: file.name, coords });
+  kmlUpdateFileUI();
+}
+
+function kmlRemoveFile(index) {
+  kmlLoadedFiles.splice(index, 1);
+  kmlUpdateFileUI();
+  if (!kmlLoadedFiles.length) kmlClearAll();
+}
+
+function kmlClearAll() {
+  kmlLoadedFiles = [];
+  kmlLocalities  = [];
+  kmlAbortFlag   = true;
+  if (kmlMarkersLayer) { map.removeLayer(kmlMarkersLayer); kmlMarkersLayer = null; }
+  if (kmlRouteLayer)   { map.removeLayer(kmlRouteLayer);   kmlRouteLayer   = null; }
+  document.getElementById('kml-file-list').style.display     = 'none';
+  document.getElementById('kml-run-btn').style.display       = 'none';
+  document.getElementById('kml-progress-wrap').style.display = 'none';
+  document.getElementById('kml-stats').style.display         = 'none';
+  document.getElementById('kml-results').innerHTML           = '';
+  document.getElementById('kml-file-chips').innerHTML        = '';
+}
+
+async function kmlRunExtraction() {
+  if (!kmlLoadedFiles.length) return;
+  kmlAbortFlag = false;
+
+  const allCoords = mergeAndOrderCoords(kmlLoadedFiles);
+  const totalKm   = totalRouteKm(allCoords);
+
+  if (kmlRouteLayer) map.removeLayer(kmlRouteLayer);
+  kmlRouteLayer = L.polyline(
+    allCoords.map(([lng, lat]) => [lat, lng]),
+    { color: '#4ade80', weight: 3, opacity: 0.7, dashArray: '6 3' }
+  ).addTo(map);
+  map.fitBounds(kmlRouteLayer.getBounds(), { padding: [30, 30] });
+
+  const progressWrap  = document.getElementById('kml-progress-wrap');
+  const progressLabel = document.getElementById('kml-progress-label');
+  const progressBar   = document.getElementById('kml-progress-bar');
+  const runBtn        = document.getElementById('kml-run-btn');
+  progressWrap.style.display = 'block';
+  runBtn.disabled            = true;
+  runBtn.textContent         = '⏳ Extraction…';
+  document.getElementById('kml-results').innerHTML    = '';
+  document.getElementById('kml-stats').style.display  = 'none';
+
+  const localities = await extractLocalities(allCoords, (current, total) => {
+    progressLabel.textContent = `Interrogation des communes… ${current} / ${total} points`;
+    progressBar.style.width   = `${Math.round(current / total * 100)}%`;
+  });
+
+  progressWrap.style.display = 'none';
+  runBtn.disabled            = false;
+  runBtn.textContent         = '▶ Extraire les communes';
+
+  if (localities.length) kmlRenderResults(localities, totalKm);
+  else alert('Aucune commune trouvée. Vérifiez que vos fichiers contiennent des tracés linéaires.');
+}
+
+function kmlCopyList() {
+  const text = kmlLocalities.map(l => l.name).join('\n');
+  navigator.clipboard.writeText(text)
+    .then(() => alert(`${kmlLocalities.length} localités copiées !`))
+    .catch(() => alert('Copie non disponible — utilisez le CSV'));
+}
+
+function kmlExportCsv() {
+  if (!kmlLocalities.length) return;
+  const header = 'nom,code_insee,departement,type,lat,lng';
+  const rows   = kmlLocalities.map(l =>
+    [l.name, l.insee || '', l.dept || '', l.type || '', l.lat, l.lng]
+      .map(v => `"${String(v).replace(/"/g, '""')}"`)
+      .join(',')
+  );
+  const blob = new Blob([[header, ...rows].join('\n')], { type: 'text/csv;charset=utf-8;' });
+  const url  = URL.createObjectURL(blob);
+  const a    = Object.assign(document.createElement('a'), {
+    href: url, download: 'communes-transhumance.csv',
+  });
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a); URL.revokeObjectURL(url);
+}
+
+// ── Drop zone ─────────────────────────────────────────────────────────────────
+(function initKmlDropZone() {
+  const zone  = document.getElementById('kml-drop-zone');
+  const input = document.getElementById('kml-file-input');
+  if (!zone || !input) return;
+
+  zone.addEventListener('click', e => { if (e.target.tagName !== 'BUTTON') input.click(); });
+  input.addEventListener('change', async () => {
+    for (const f of input.files) await kmlLoadFile(f);
+    input.value = '';
+  });
+  zone.addEventListener('dragover',  e => { e.preventDefault(); zone.classList.add('drag-over'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+  zone.addEventListener('drop', async e => {
+    e.preventDefault(); zone.classList.remove('drag-over');
+    for (const f of e.dataTransfer.files) {
+      if (['kml','gpx'].includes(f.name.split('.').pop().toLowerCase())) await kmlLoadFile(f);
+    }
+  });
+})();

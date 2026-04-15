@@ -758,3 +758,145 @@
       background: #5ff090;
       box-shadow: 0 4px 20px rgba(74,222,128,0.3);
     }
+
+/* ══ Feature KML/GPX — Communes du trajet ══════════════════════════════════ */
+
+.kml-drop-zone {
+  border: 2px dashed var(--border-md);
+  border-radius: 10px;
+  padding: 24px 16px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  margin-bottom: 10px;
+}
+.kml-drop-zone:hover,
+.kml-drop-zone.drag-over {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+}
+.kml-drop-icon {
+  font-size: 30px;
+  line-height: 1;
+  margin-bottom: 8px;
+  animation: hop 1.1s ease infinite alternate;
+}
+.kml-drop-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-hi);
+  margin-bottom: 3px;
+}
+.kml-drop-sub {
+  font-size: 11px;
+  color: var(--text-lo);
+}
+
+.kml-file-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 6px 10px;
+  margin-bottom: 5px;
+  font-size: 11px;
+  color: var(--text-md);
+}
+.kml-file-chip span:first-child {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-hi);
+}
+.kml-file-chip-count {
+  color: var(--text-lo);
+  font-size: 10px;
+  flex-shrink: 0;
+}
+.kml-file-chip button {
+  background: none;
+  border: none;
+  color: var(--text-lo);
+  cursor: pointer;
+  padding: 0 2px;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+.kml-file-chip button:hover { color: var(--red); }
+
+.kml-progress-label {
+  font-size: 11px;
+  color: var(--text-md);
+  margin-bottom: 6px;
+  text-align: center;
+}
+.kml-progress-bar-wrap {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  height: 6px;
+  overflow: hidden;
+  margin-bottom: 10px;
+}
+.kml-progress-bar {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 20px;
+  transition: width 0.2s ease;
+}
+
+.kml-locality-item {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 9px 12px;
+  margin-bottom: 5px;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+  opacity: 0;
+  animation: kmlFadeIn 0.3s ease forwards;
+}
+.kml-locality-item:hover,
+.kml-locality-item.hover {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+}
+.kml-locality-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin-bottom: 2px;
+}
+.kml-locality-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-hi);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.kml-locality-meta {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.kml-badge {
+  background: var(--accent-dim);
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  letter-spacing: 0.03em;
+}
+
+@keyframes kmlFadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}

@@ -100,6 +100,7 @@
   <div id="sidebar-tabs">
     <div class="sidebar-tab active" data-tab="filters" onclick="switchTab('filters')">Filtres</div>
     <div class="sidebar-tab"        data-tab="route"   onclick="switchTab('route')">Itinéraire</div>
+    <div class="sidebar-tab"        data-tab="kml"     onclick="switchTab('kml')">🗺 Communes</div>
   </div>
 
   <div id="sidebar-scroll">
@@ -304,6 +305,83 @@
       </div>
 
     </div><!-- /pane-route -->
+
+    <!-- ══ ONGLET COMMUNES KML/GPX ══ -->
+    <div class="sidebar-pane" id="pane-kml">
+      <div class="sidebar-section" style="padding-top:8px">
+        <hr class="sidebar-divider" style="margin-top:0" />
+
+        <div class="route-guide">
+          <ol>
+            <li><strong>Déposez</strong> un ou plusieurs fichiers KML ou GPX</li>
+            <li>Les tracés sont <strong>fusionnés</strong> en un seul itinéraire</li>
+            <li>La liste des communes apparaît <strong>dans l'ordre du parcours</strong></li>
+            <li><strong>Exportez</strong> en CSV ou copiez la liste</li>
+          </ol>
+        </div>
+
+        <h2>Fichiers de tracé</h2>
+
+        <div class="kml-drop-zone" id="kml-drop-zone">
+          <div class="kml-drop-icon">🐑</div>
+          <div class="kml-drop-label">Déposer des fichiers KML ou GPX</div>
+          <div class="kml-drop-sub">Plusieurs fichiers acceptés — tracés fusionnés</div>
+          <input type="file" id="kml-file-input" accept=".kml,.gpx" multiple
+                 style="display:none" />
+          <button class="btn btn-ghost" style="margin-top:10px;font-size:11px"
+                  onclick="document.getElementById('kml-file-input').click()">
+            Parcourir…
+          </button>
+        </div>
+
+        <div id="kml-file-list" style="display:none">
+          <h2>Fichiers chargés</h2>
+          <div id="kml-file-chips"></div>
+          <button class="btn btn-ghost" style="width:100%;font-size:11px;margin-top:6px"
+                  onclick="kmlClearAll()">✕ Tout effacer</button>
+        </div>
+
+        <button class="btn" id="kml-run-btn" style="width:100%;margin-top:10px;display:none"
+                onclick="kmlRunExtraction()">
+          ▶ Extraire les communes
+        </button>
+
+        <div id="kml-progress-wrap" style="display:none">
+          <div class="kml-progress-label" id="kml-progress-label">Préparation…</div>
+          <div class="kml-progress-bar-wrap">
+            <div class="kml-progress-bar" id="kml-progress-bar" style="width:0%"></div>
+          </div>
+        </div>
+
+        <div id="kml-stats" style="display:none">
+          <div class="brand-stats" style="margin:10px 0">
+            <div class="stat">
+              <div class="value" id="kml-stat-communes">—</div>
+              <div class="label">communes</div>
+            </div>
+            <div class="stat-sep"></div>
+            <div class="stat">
+              <div class="value" id="kml-stat-lieux">—</div>
+              <div class="label">localités</div>
+            </div>
+            <div class="stat-sep"></div>
+            <div class="stat">
+              <div class="value" id="kml-stat-km">—</div>
+              <div class="label">km tracé</div>
+            </div>
+          </div>
+          <div style="display:flex;gap:6px;margin-bottom:10px">
+            <button class="btn btn-ghost" style="flex:1;font-size:11px"
+                    onclick="kmlCopyList()">📋 Copier</button>
+            <button class="btn btn-ghost" style="flex:1;font-size:11px"
+                    onclick="kmlExportCsv()">⬇ CSV</button>
+          </div>
+        </div>
+
+        <div id="kml-results"></div>
+
+      </div>
+    </div><!-- /pane-kml -->
 
   </div><!-- /sidebar-scroll -->
 </div>

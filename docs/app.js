@@ -323,7 +323,9 @@ satellite.addTo(map);
 L.control.layers({ 'Carte': osmLayer, 'Satellite': satellite }, {}, { position: 'bottomright' }).addTo(map);
 
 // ── Visibilité des couches (déclaré ici pour être accessible dans l'IIFE ci-dessous) ──
-const layerVisible = { terrains: false, route: true, communes: true, poi: true, vegetation: true };
+const layerVisible = { terrains: false, route: true, communes: true,
+  poi_eau: true, poi_haltes: true, poi_ravitaillement: true, poi_lieux: true,
+  vegetation: true };
 
 // Pré-charge le GeoJSON communes dès le démarrage (différé pour éviter le TDZ des let en bas de fichier)
 setTimeout(() => loadCommunesGeo(), 0);
@@ -331,11 +333,13 @@ setTimeout(() => loadCommunesGeo(), 0);
 // ── Contrôle de visibilité des couches ───────────────────────────────────
 (function _initLayerControl() {
   const LAYERS_CONFIG = [
-    { key: 'terrains',   color: '#fb923c', label: 'Terrains pâturables' },
-    { key: 'route',      color: '#f43f5e', label: 'Itinéraire'          },
-    { key: 'communes',   color: '#60a5fa', label: 'Communes'            },
-    { key: 'poi',        color: '#a78bfa', label: 'Points d\'intérêt'   },
-    { key: 'vegetation', color: '#4ade80', label: 'Végétation OCS GE'   },
+    { key: 'terrains',         color: '#fb923c', label: 'Terrains pâturables'  },
+    { key: 'route',            color: '#f43f5e', label: 'Itinéraire'           },
+    { key: 'communes',         color: '#60a5fa', label: 'Communes'             },
+    { key: 'poi_eau',          color: '#60a5fa', label: '💧 Points d\'eau'     },
+    { key: 'poi_haltes',       color: '#fb923c', label: '🏡 Haltes'            },
+    { key: 'poi_ravitaillement', color: '#4ade80', label: '🛒 Ravitaillement'  },
+    { key: 'poi_lieux',        color: '#f9a8d4', label: '🏘 Hameaux/Villages'  },
   ];
 
   const Ctrl = L.Control.extend({
@@ -1768,7 +1772,7 @@ let kmlLocalities    = [];   // résultat final
 let kmlPoiData       = null; // { eau: [...], haltes: [...], ravitaillement: [...] }
 let kmlMarkersLayer  = null; // LayerGroup Leaflet pour les marqueurs communes
 let kmlRouteLayer    = null; // Polyline de prévisualisation du tracé fusionné
-let kmlPoiLayer      = null; // LayerGroup Leaflet pour les marqueurs POI
+const kmlPoiLayers   = { eau: null, haltes: null, ravitaillement: null, lieux: null };
 let kmlParcelLayer   = null; // Parcelles corridor KML
 let kmlAbortFlag     = false;
 
@@ -1836,9 +1840,10 @@ function _getLayerRefs(key) {
       if (kmlMarkersLayer)        refs.push(kmlMarkersLayer);
       if (kmlCommunePolygonLayer) refs.push(kmlCommunePolygonLayer);
       break;
-    case 'poi':
-      if (kmlPoiLayer) refs.push(kmlPoiLayer);
-      break;
+    case 'poi_eau':          if (kmlPoiLayers.eau)           refs.push(kmlPoiLayers.eau);           break;
+    case 'poi_haltes':       if (kmlPoiLayers.haltes)        refs.push(kmlPoiLayers.haltes);        break;
+    case 'poi_ravitaillement': if (kmlPoiLayers.ravitaillement) refs.push(kmlPoiLayers.ravitaillement); break;
+    case 'poi_lieux':        if (kmlPoiLayers.lieux)         refs.push(kmlPoiLayers.lieux);         break;
     case 'vegetation':
       if (ocsWmsLayer) refs.push(ocsWmsLayer);
       break;
@@ -2081,18 +2086,7 @@ async function _extractLocalitiesFallback(allCoords, onProgress) {
 function kmlRenderResults(localities, totalKm, terrainCount = 0) {
   if (kmlMarkersLayer) { map.removeLayer(kmlMarkersLayer); kmlMarkersLayer = null; }
   if (kmlCommunePolygonLayer) { map.removeLayer(kmlCommunePolygonLayer); kmlCommunePolygonLayer = null; }
-  kmlLocalities   = localities;
-  kmlMarkersLayer = L.layerGroup();
-  _addLayerIfVisible(kmlMarkersLayer, 'communes');
-
-  localities.forEach(loc => {
-    const marker = L.circleMarker([loc.lat, loc.lng], {
-      radius: 5, color: '#4ade80', fillColor: '#4ade80',
-      fillOpacity: 0.85, weight: 2,
-    }).bindPopup(`<b>${loc.name}</b><br><small>${loc.insee || ''} · ${loc.dept || ''}</small>`);
-    kmlMarkersLayer.addLayer(marker);
-    loc._marker = marker;
-  });
+  kmlLocalities = localities;
 
   // Stat update
   const communes = localities.filter(l => l.type === 'municipality' || l.type === 'commune').length;
@@ -2124,7 +2118,6 @@ function kmlRenderResults(localities, totalKm, terrainCount = 0) {
       </div>`;
     item.addEventListener('mouseenter', () => {
       item.classList.add('hover');
-      if (loc._marker) loc._marker.openPopup();
       if (loc._polygon) loc._polygon.setStyle({ fillOpacity: 0.55, weight: 2.5 });
       map.panTo([loc.lat, loc.lng], { animate: true, duration: 0.4 });
     });
@@ -2210,7 +2203,9 @@ function kmlClearAll() {
   kmlAbortFlag   = true;
   if (kmlMarkersLayer)       { map.removeLayer(kmlMarkersLayer);       kmlMarkersLayer = null; }
   if (kmlRouteLayer)         { map.removeLayer(kmlRouteLayer);         kmlRouteLayer   = null; }
-  if (kmlPoiLayer)           { map.removeLayer(kmlPoiLayer);           kmlPoiLayer     = null; }
+  for (const cat of Object.keys(kmlPoiLayers)) {
+    if (kmlPoiLayers[cat]) { map.removeLayer(kmlPoiLayers[cat]); kmlPoiLayers[cat] = null; }
+  }
   if (kmlParcelLayer)        { map.removeLayer(kmlParcelLayer);        kmlParcelLayer  = null; }
   if (kmlCommunePolygonLayer){ map.removeLayer(kmlCommunePolygonLayer);kmlCommunePolygonLayer = null; }
   const fileList = document.getElementById('kml-file-list');
@@ -2666,19 +2661,24 @@ async function fetchAllPoi(coords) {
 }
 
 function kmlRenderPoi(poiData) {
-  if (kmlPoiLayer) { map.removeLayer(kmlPoiLayer); kmlPoiLayer = null; }
-  kmlPoiLayer = L.layerGroup();
-  _addLayerIfVisible(kmlPoiLayer, 'poi');
+  for (const cat of Object.keys(kmlPoiLayers)) {
+    if (kmlPoiLayers[cat]) { map.removeLayer(kmlPoiLayers[cat]); kmlPoiLayers[cat] = null; }
+  }
 
   const catConfig = {
-    eau:            { color: '#60a5fa', emoji: '💧' },
-    haltes:         { color: '#fb923c', emoji: '🏡' },
-    ravitaillement: { color: '#4ade80', emoji: '🛒' },
-    lieux:          { color: '#f9a8d4', emoji: '🏘' },
+    eau:            { color: '#60a5fa', emoji: '💧', key: 'poi_eau'           },
+    haltes:         { color: '#fb923c', emoji: '🏡', key: 'poi_haltes'        },
+    ravitaillement: { color: '#4ade80', emoji: '🛒', key: 'poi_ravitaillement' },
+    lieux:          { color: '#f9a8d4', emoji: '🏘', key: 'poi_lieux'         },
   };
 
   for (const [cat, list] of Object.entries(poiData)) {
-    const { color, emoji } = catConfig[cat] || { color: '#fff', emoji: '📍' };
+    const cfg = catConfig[cat];
+    if (!cfg) continue;
+    const { color, emoji, key } = cfg;
+    kmlPoiLayers[cat] = L.layerGroup();
+    _addLayerIfVisible(kmlPoiLayers[cat], key);
+
     for (const poi of list) {
       const marker = L.circleMarker([poi.lat, poi.lng], {
         radius: 6, color, fillColor: color,
@@ -2700,7 +2700,7 @@ function kmlRenderPoi(poiData) {
           <div class="poi-popup-dist">${poi.distKm} km du tracé</div>
         </div>`;
       }, { maxWidth: 360, minWidth: 220 });
-      kmlPoiLayer.addLayer(marker);
+      kmlPoiLayers[cat].addLayer(marker);
       poi._marker = marker;
     }
   }

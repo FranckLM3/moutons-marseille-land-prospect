@@ -325,8 +325,8 @@ L.control.layers({ 'Carte': osmLayer, 'Satellite': satellite }, {}, { position: 
 // ── Visibilité des couches (déclaré ici pour être accessible dans l'IIFE ci-dessous) ──
 const layerVisible = { terrains: false, route: true, communes: true, poi: true, vegetation: true };
 
-// Pré-charge le GeoJSON communes dès le démarrage pour éviter un délai au premier "Lancer"
-loadCommunesGeo();
+// Pré-charge le GeoJSON communes dès le démarrage (différé pour éviter le TDZ des let en bas de fichier)
+setTimeout(() => loadCommunesGeo(), 0);
 
 // ── Contrôle de visibilité des couches ───────────────────────────────────
 (function _initLayerControl() {
@@ -744,6 +744,16 @@ function _renderFilters() {
       layer.on('mouseout',  function() { currentLayer && currentLayer.resetStyle(this); });
     },
   });
+  // En mode filtre, les terrains sont toujours visibles — forcer si besoin et afficher le contrôle
+  if (!layerVisible.terrains) {
+    layerVisible.terrains = true;
+    const cb  = document.querySelector('.layer-toggle-cb[data-key="terrains"]');
+    const row = document.querySelector('.layer-toggle-row[data-key="terrains"]') ||
+                cb?.closest('.layer-toggle-row');
+    if (cb)  cb.checked = true;
+    if (row) row.style.opacity = '1';
+  }
+  if (window._layerCtrlEl) window._layerCtrlEl.style.display = '';
   _addLayerIfVisible(currentLayer, 'terrains');
 
   if (filtered.length > 0) {

@@ -1932,37 +1932,8 @@ function parseGpx(text) {
 
 // ── Merge et ordonnancement multi-fichiers ────────────────────────────────────
 function mergeAndOrderCoords(filesData) {
-  const segments = filesData.map(f => f.coords).filter(c => c.length > 0);
-  if (segments.length === 0) return [];
-  if (segments.length === 1) return segments[0];
-
-  // Greedy nearest-neighbor chain : à chaque étape on cherche le segment non visité
-  // dont l'une des extrémités est la plus proche du point courant, puis on l'ajoute
-  // (éventuellement retourné). O(n²) — acceptable pour quelques fichiers KML.
-  const used   = new Array(segments.length).fill(false);
-  const result = [...segments[0]];
-  used[0] = true;
-
-  for (let step = 1; step < segments.length; step++) {
-    const tail = result[result.length - 1];
-    let bestIdx = -1, bestDist = Infinity, bestReverse = false;
-
-    for (let i = 0; i < segments.length; i++) {
-      if (used[i]) continue;
-      const seg = segments[i];
-      const dHead = haversineMeters(tail[0], tail[1], seg[0][0],              seg[0][1]);
-      const dTail = haversineMeters(tail[0], tail[1], seg[seg.length-1][0], seg[seg.length-1][1]);
-      if (dHead < bestDist) { bestDist = dHead; bestIdx = i; bestReverse = false; }
-      if (dTail < bestDist) { bestDist = dTail; bestIdx = i; bestReverse = true;  }
-    }
-
-    used[bestIdx] = true;
-    const seg = segments[bestIdx];
-    result.push(...(bestReverse ? [...seg].reverse() : seg));
-  }
-
-  return result;
-}
+  // Concaténation brute dans l'ordre de chargement — pas de réordonnancement
+  return filesData.flatMap(f => f.coords);
 
 // ── Haversine ─────────────────────────────────────────────────────────────────
 function haversineMeters(lng1, lat1, lng2, lat2) {

@@ -2285,6 +2285,7 @@ async function kmlRunExtraction() {
   // ── Étape 3 : POI Overpass ────────────────────────────────────────────────
   progressLabel.textContent = 'Recherche des points d\'intérêt…';
   progressBar.style.width   = '85%';
+  if (poiSection) poiSection.innerHTML = '<div class="poi-loading"><span class="poi-spinner"></span>Chargement des points d\'intérêt…</div>';
 
   try {
     kmlPoiData = await fetchAllPoi(allCoords);

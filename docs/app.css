@@ -1021,6 +1021,27 @@
 }
 
 /* ── POI groups ──────────────────────────────────────────────────────────── */
+.poi-loading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 12px;
+  font-size: 13px;
+  color: var(--text-lo);
+}
+.poi-spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent, #60a5fa);
+  border-radius: 50%;
+  flex-shrink: 0;
+  animation: poi-spin 0.7s linear infinite;
+}
+@keyframes poi-spin {
+  to { transform: rotate(360deg); }
+}
+
 .kml-poi-group {
   margin-bottom: 8px;
   border: 1px solid var(--border);

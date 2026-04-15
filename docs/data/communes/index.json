@@ -1,0 +1,1072 @@
+[
+  {
+    "name": "Aix-en-Provence",
+    "file": "aix_en_provence.geojson",
+    "bbox": [
+      5.269485,
+      43.44613,
+      5.506353,
+      43.626038
+    ]
+  },
+  {
+    "name": "Allauch",
+    "file": "allauch.geojson",
+    "bbox": [
+      5.454965,
+      43.313669,
+      5.565299,
+      43.390941
+    ]
+  },
+  {
+    "name": "Alleins",
+    "file": "alleins.geojson",
+    "bbox": [
+      5.116678,
+      43.690147,
+      5.195172,
+      43.729404
+    ]
+  },
+  {
+    "name": "Aubagne",
+    "file": "aubagne.geojson",
+    "bbox": [
+      5.51323,
+      43.244394,
+      5.613924,
+      43.336415
+    ]
+  },
+  {
+    "name": "Auriol",
+    "file": "auriol.geojson",
+    "bbox": [
+      5.6069,
+      43.316815,
+      5.705009,
+      43.401864
+    ]
+  },
+  {
+    "name": "Aurons",
+    "file": "aurons.geojson",
+    "bbox": [
+      5.115737,
+      43.650473,
+      5.182365,
+      43.69378
+    ]
+  },
+  {
+    "name": "Beaurecueil",
+    "file": "beaurecueil.geojson",
+    "bbox": [
+      5.525788,
+      43.49914,
+      5.570465,
+      43.540273
+    ]
+  },
+  {
+    "name": "Belcodène",
+    "file": "belcodene.geojson",
+    "bbox": [
+      5.557693,
+      43.403522,
+      5.611344,
+      43.442728
+    ]
+  },
+  {
+    "name": "Berre-l'Étang",
+    "file": "berre_l_etang.geojson",
+    "bbox": [
+      5.114326,
+      43.454527,
+      5.206661,
+      43.540287
+    ]
+  },
+  {
+    "name": "Bouc-Bel-Air",
+    "file": "bouc_bel_air.geojson",
+    "bbox": [
+      5.374919,
+      43.41438,
+      5.448706,
+      43.473896
+    ]
+  },
+  {
+    "name": "Cabriès",
+    "file": "cabries.geojson",
+    "bbox": [
+      5.301068,
+      43.416978,
+      5.392481,
+      43.488918
+    ]
+  },
+  {
+    "name": "Cadolive",
+    "file": "cadolive.geojson",
+    "bbox": [
+      5.504405,
+      43.382446,
+      5.556239,
+      43.406078
+    ]
+  },
+  {
+    "name": "Carnoux-en-Provence",
+    "file": "carnoux_en_provence.geojson",
+    "bbox": [
+      5.544464,
+      43.2467,
+      5.586572,
+      43.271383
+    ]
+  },
+  {
+    "name": "Carry-le-Rouet",
+    "file": "carry_le_rouet.geojson",
+    "bbox": [
+      5.131334,
+      43.326601,
+      5.185794,
+      43.366446
+    ]
+  },
+  {
+    "name": "Cassis",
+    "file": "cassis.geojson",
+    "bbox": [
+      5.506321,
+      43.18907,
+      5.594533,
+      43.248717
+    ]
+  },
+  {
+    "name": "Ceyreste",
+    "file": "ceyreste.geojson",
+    "bbox": [
+      5.58788,
+      43.201031,
+      5.682993,
+      43.242019
+    ]
+  },
+  {
+    "name": "Charleval",
+    "file": "charleval.geojson",
+    "bbox": [
+      5.22344,
+      43.693717,
+      5.268861,
+      43.745134
+    ]
+  },
+  {
+    "name": "Châteauneuf-le-Rouge",
+    "file": "chateauneuf_le_rouge.geojson",
+    "bbox": [
+      5.532781,
+      43.47406,
+      5.605501,
+      43.504388
+    ]
+  },
+  {
+    "name": "Châteauneuf-les-Martigues",
+    "file": "chateauneuf_les_martigues.geojson",
+    "bbox": [
+      5.097027,
+      43.362352,
+      5.196076,
+      43.418749
+    ]
+  },
+  {
+    "name": "Cornillon-Confoux",
+    "file": "cornillon_confoux.geojson",
+    "bbox": [
+      5.043022,
+      43.554352,
+      5.107467,
+      43.598181
+    ]
+  },
+  {
+    "name": "Coudoux",
+    "file": "coudoux.geojson",
+    "bbox": [
+      5.226021,
+      43.536027,
+      5.2857,
+      43.581489
+    ]
+  },
+  {
+    "name": "Cuges-les-Pins",
+    "file": "cuges_les_pins.geojson",
+    "bbox": [
+      5.657012,
+      43.247284,
+      5.762862,
+      43.3174
+    ]
+  },
+  {
+    "name": "Ensuès-la-Redonne",
+    "file": "ensues_la_redonne.geojson",
+    "bbox": [
+      5.138843,
+      43.327702,
+      5.237293,
+      43.382386
+    ]
+  },
+  {
+    "name": "Eyguières",
+    "file": "eyguieres.geojson",
+    "bbox": [
+      4.953426,
+      43.647932,
+      5.072919,
+      43.752948
+    ]
+  },
+  {
+    "name": "Fos-sur-Mer",
+    "file": "fos_sur_mer.geojson",
+    "bbox": [
+      4.813986,
+      43.398246,
+      4.981801,
+      43.510511
+    ]
+  },
+  {
+    "name": "Fuveau",
+    "file": "fuveau.geojson",
+    "bbox": [
+      5.496215,
+      43.431782,
+      5.610849,
+      43.483264
+    ]
+  },
+  {
+    "name": "Gardanne",
+    "file": "gardanne.geojson",
+    "bbox": [
+      5.441907,
+      43.427933,
+      5.529414,
+      43.489096
+    ]
+  },
+  {
+    "name": "Gignac-la-Nerthe",
+    "file": "gignac_la_nerthe.geojson",
+    "bbox": [
+      5.195063,
+      43.372688,
+      5.271176,
+      43.40193
+    ]
+  },
+  {
+    "name": "Grans",
+    "file": "grans.geojson",
+    "bbox": [
+      4.988723,
+      43.591504,
+      5.097334,
+      43.64277
+    ]
+  },
+  {
+    "name": "Gréasque",
+    "file": "greasque.geojson",
+    "bbox": [
+      5.529298,
+      43.407148,
+      5.564579,
+      43.442633
+    ]
+  },
+  {
+    "name": "Gémenos",
+    "file": "gemenos.geojson",
+    "bbox": [
+      5.607001,
+      43.266006,
+      5.696505,
+      43.327464
+    ]
+  },
+  {
+    "name": "Istres",
+    "file": "istres.geojson",
+    "bbox": [
+      4.879781,
+      43.46805,
+      5.015517,
+      43.623031
+    ]
+  },
+  {
+    "name": "Jouques",
+    "file": "jouques.geojson",
+    "bbox": [
+      5.601167,
+      43.564178,
+      5.720001,
+      43.691834
+    ]
+  },
+  {
+    "name": "La Barben",
+    "file": "la_barben.geojson",
+    "bbox": [
+      5.165739,
+      43.592197,
+      5.258753,
+      43.645646
+    ]
+  },
+  {
+    "name": "La Bouilladisse",
+    "file": "la_bouilladisse.geojson",
+    "bbox": [
+      5.581757,
+      43.376506,
+      5.67048,
+      43.411934
+    ]
+  },
+  {
+    "name": "La Ciotat",
+    "file": "la_ciotat.geojson",
+    "bbox": [
+      5.556759,
+      43.157394,
+      5.678322,
+      43.218933
+    ]
+  },
+  {
+    "name": "La Destrousse",
+    "file": "la_destrousse.geojson",
+    "bbox": [
+      5.586879,
+      43.366167,
+      5.610014,
+      43.391392
+    ]
+  },
+  {
+    "name": "La Fare-les-Oliviers",
+    "file": "la_fare_les_oliviers.geojson",
+    "bbox": [
+      5.176717,
+      43.533538,
+      5.233492,
+      43.57448
+    ]
+  },
+  {
+    "name": "La Penne-sur-Huveaune",
+    "file": "la_penne_sur_huveaune.geojson",
+    "bbox": [
+      5.504759,
+      43.266668,
+      5.532352,
+      43.288885
+    ]
+  },
+  {
+    "name": "La Roque-d'Anthéron",
+    "file": "la_roque_d_antheron.geojson",
+    "bbox": [
+      5.26214,
+      43.688982,
+      5.368105,
+      43.74521
+    ]
+  },
+  {
+    "name": "Lamanon",
+    "file": "lamanon.geojson",
+    "bbox": [
+      5.054149,
+      43.683739,
+      5.126123,
+      43.730868
+    ]
+  },
+  {
+    "name": "Lambesc",
+    "file": "lambesc.geojson",
+    "bbox": [
+      5.181139,
+      43.607473,
+      5.317435,
+      43.719953
+    ]
+  },
+  {
+    "name": "Lançon-Provence",
+    "file": "lancon_provence.geojson",
+    "bbox": [
+      5.089141,
+      43.52294,
+      5.255792,
+      43.62261
+    ]
+  },
+  {
+    "name": "Le Puy-Sainte-Réparade",
+    "file": "le_puy_sainte_reparade.geojson",
+    "bbox": [
+      5.392392,
+      43.613859,
+      5.487898,
+      43.689513
+    ]
+  },
+  {
+    "name": "Le Rove",
+    "file": "le_rove.geojson",
+    "bbox": [
+      5.214262,
+      43.331177,
+      5.284986,
+      43.391403
+    ]
+  },
+  {
+    "name": "Le Tholonet",
+    "file": "le_tholonet.geojson",
+    "bbox": [
+      5.476316,
+      43.504819,
+      5.534281,
+      43.538809
+    ]
+  },
+  {
+    "name": "Les Pennes-Mirabeau",
+    "file": "les_pennes_mirabeau.geojson",
+    "bbox": [
+      5.265128,
+      43.36817,
+      5.379274,
+      43.432788
+    ]
+  },
+  {
+    "name": "Mallemort",
+    "file": "mallemort.geojson",
+    "bbox": [
+      5.124114,
+      43.697186,
+      5.242647,
+      43.753697
+    ]
+  },
+  {
+    "name": "Marignane",
+    "file": "marignane.geojson",
+    "bbox": [
+      5.171773,
+      43.392607,
+      5.263991,
+      43.449075
+    ]
+  },
+  {
+    "name": "Marseille 10e Arrondissement",
+    "file": "marseille_10e_arrondissement.geojson",
+    "bbox": [
+      5.389418,
+      43.256875,
+      5.460773,
+      43.291657
+    ]
+  },
+  {
+    "name": "Marseille 11e Arrondissement",
+    "file": "marseille_11e_arrondissement.geojson",
+    "bbox": [
+      5.424917,
+      43.253509,
+      5.532474,
+      43.321879
+    ]
+  },
+  {
+    "name": "Marseille 12e Arrondissement",
+    "file": "marseille_12e_arrondissement.geojson",
+    "bbox": [
+      5.406384,
+      43.290053,
+      5.476957,
+      43.324442
+    ]
+  },
+  {
+    "name": "Marseille 13e Arrondissement",
+    "file": "marseille_13e_arrondissement.geojson",
+    "bbox": [
+      5.39346,
+      43.314787,
+      5.466577,
+      43.39116
+    ]
+  },
+  {
+    "name": "Marseille 14e Arrondissement",
+    "file": "marseille_14e_arrondissement.geojson",
+    "bbox": [
+      5.366465,
+      43.315081,
+      5.416709,
+      43.378835
+    ]
+  },
+  {
+    "name": "Marseille 15e Arrondissement",
+    "file": "marseille_15e_arrondissement.geojson",
+    "bbox": [
+      5.332269,
+      43.316658,
+      5.397536,
+      43.389667
+    ]
+  },
+  {
+    "name": "Marseille 16e Arrondissement",
+    "file": "marseille_16e_arrondissement.geojson",
+    "bbox": [
+      5.278118,
+      43.337006,
+      5.353951,
+      43.389015
+    ]
+  },
+  {
+    "name": "Marseille 1er Arrondissement",
+    "file": "marseille_1er_arrondissement.geojson",
+    "bbox": [
+      5.371237,
+      43.29107,
+      5.394313,
+      43.309337
+    ]
+  },
+  {
+    "name": "Marseille 2e Arrondissement",
+    "file": "marseille_2e_arrondissement.geojson",
+    "bbox": [
+      5.339488,
+      43.294637,
+      5.374838,
+      43.336507
+    ]
+  },
+  {
+    "name": "Marseille 3e Arrondissement",
+    "file": "marseille_3e_arrondissement.geojson",
+    "bbox": [
+      5.368215,
+      43.301975,
+      5.393269,
+      43.32098
+    ]
+  },
+  {
+    "name": "Marseille 4e Arrondissement",
+    "file": "marseille_4e_arrondissement.geojson",
+    "bbox": [
+      5.389105,
+      43.295426,
+      5.411266,
+      43.316885
+    ]
+  },
+  {
+    "name": "Marseille 5e Arrondissement",
+    "file": "marseille_5e_arrondissement.geojson",
+    "bbox": [
+      5.386765,
+      43.284812,
+      5.415592,
+      43.300197
+    ]
+  },
+  {
+    "name": "Marseille 6e Arrondissement",
+    "file": "marseille_6e_arrondissement.geojson",
+    "bbox": [
+      5.370076,
+      43.279232,
+      5.392632,
+      43.295885
+    ]
+  },
+  {
+    "name": "Marseille 7e Arrondissement",
+    "file": "marseille_7e_arrondissement.geojson",
+    "bbox": [
+      5.22869,
+      43.17263,
+      5.402736,
+      43.295247
+    ]
+  },
+  {
+    "name": "Marseille 8e Arrondissement",
+    "file": "marseille_8e_arrondissement.geojson",
+    "bbox": [
+      5.325096,
+      43.193762,
+      5.401261,
+      43.283201
+    ]
+  },
+  {
+    "name": "Marseille 9e Arrondissement",
+    "file": "marseille_9e_arrondissement.geojson",
+    "bbox": [
+      5.378373,
+      43.197141,
+      5.526103,
+      43.276102
+    ]
+  },
+  {
+    "name": "Martigues",
+    "file": "martigues.geojson",
+    "bbox": [
+      4.985116,
+      43.32446,
+      5.105041,
+      43.443493
+    ]
+  },
+  {
+    "name": "Meyrargues",
+    "file": "meyrargues.geojson",
+    "bbox": [
+      5.476584,
+      43.57827,
+      5.587676,
+      43.666296
+    ]
+  },
+  {
+    "name": "Meyreuil",
+    "file": "meyreuil.geojson",
+    "bbox": [
+      5.463514,
+      43.463207,
+      5.536969,
+      43.512616
+    ]
+  },
+  {
+    "name": "Mimet",
+    "file": "mimet.geojson",
+    "bbox": [
+      5.463294,
+      43.384455,
+      5.53692,
+      43.440252
+    ]
+  },
+  {
+    "name": "Miramas",
+    "file": "miramas.geojson",
+    "bbox": [
+      4.967083,
+      43.550244,
+      5.062767,
+      43.61818
+    ]
+  },
+  {
+    "name": "Pertuis",
+    "file": "pertuis.geojson",
+    "bbox": [
+      5.446348,
+      43.661243,
+      5.621966,
+      43.727503
+    ]
+  },
+  {
+    "name": "Peynier",
+    "file": "peynier.geojson",
+    "bbox": [
+      5.587418,
+      43.404088,
+      5.653195,
+      43.471017
+    ]
+  },
+  {
+    "name": "Peypin",
+    "file": "peypin.geojson",
+    "bbox": [
+      5.544665,
+      43.356768,
+      5.59522,
+      43.41026
+    ]
+  },
+  {
+    "name": "Peyrolles-en-Provence",
+    "file": "peyrolles_en_provence.geojson",
+    "bbox": [
+      5.538598,
+      43.590504,
+      5.614352,
+      43.660904
+    ]
+  },
+  {
+    "name": "Plan-de-Cuques",
+    "file": "plan_de_cuques.geojson",
+    "bbox": [
+      5.447577,
+      43.335735,
+      5.480293,
+      43.392624
+    ]
+  },
+  {
+    "name": "Port-Saint-Louis-du-Rhône",
+    "file": "port_saint_louis_du_rhone.geojson",
+    "bbox": [
+      4.736003,
+      43.329673,
+      4.916856,
+      43.479499
+    ]
+  },
+  {
+    "name": "Port-de-Bouc",
+    "file": "port_de_bouc.geojson",
+    "bbox": [
+      4.971352,
+      43.397034,
+      5.027169,
+      43.44542
+    ]
+  },
+  {
+    "name": "Puyloubier",
+    "file": "puyloubier.geojson",
+    "bbox": [
+      5.618305,
+      43.482286,
+      5.725071,
+      43.556221
+    ]
+  },
+  {
+    "name": "Pélissanne",
+    "file": "pelissanne.geojson",
+    "bbox": [
+      5.127403,
+      43.601168,
+      5.197889,
+      43.658976
+    ]
+  },
+  {
+    "name": "Rognac",
+    "file": "rognac.geojson",
+    "bbox": [
+      5.194066,
+      43.47436,
+      5.271893,
+      43.524704
+    ]
+  },
+  {
+    "name": "Rognes",
+    "file": "rognes.geojson",
+    "bbox": [
+      5.298033,
+      43.621588,
+      5.411269,
+      43.712774
+    ]
+  },
+  {
+    "name": "Roquefort-la-Bédoule",
+    "file": "roquefort_la_bedoule.geojson",
+    "bbox": [
+      5.554881,
+      43.233388,
+      5.704326,
+      43.270236
+    ]
+  },
+  {
+    "name": "Roquevaire",
+    "file": "roquevaire.geojson",
+    "bbox": [
+      5.546161,
+      43.322263,
+      5.649917,
+      43.368246
+    ]
+  },
+  {
+    "name": "Rousset",
+    "file": "rousset.geojson",
+    "bbox": [
+      5.581985,
+      43.463872,
+      5.658386,
+      43.510301
+    ]
+  },
+  {
+    "name": "Saint-Antonin-sur-Bayon",
+    "file": "saint_antonin_sur_bayon.geojson",
+    "bbox": [
+      5.556175,
+      43.501419,
+      5.638341,
+      43.536757
+    ]
+  },
+  {
+    "name": "Saint-Cannat",
+    "file": "saint_cannat.geojson",
+    "bbox": [
+      5.254296,
+      43.58901,
+      5.367422,
+      43.642021
+    ]
+  },
+  {
+    "name": "Saint-Chamas",
+    "file": "saint_chamas.geojson",
+    "bbox": [
+      5.021648,
+      43.513084,
+      5.121889,
+      43.569776
+    ]
+  },
+  {
+    "name": "Saint-Estève-Janson",
+    "file": "saint_esteve_janson.geojson",
+    "bbox": [
+      5.365244,
+      43.676041,
+      5.411607,
+      43.706666
+    ]
+  },
+  {
+    "name": "Saint-Marc-Jaumegarde",
+    "file": "saint_marc_jaumegarde.geojson",
+    "bbox": [
+      5.479263,
+      43.531643,
+      5.561309,
+      43.581765
+    ]
+  },
+  {
+    "name": "Saint-Mitre-les-Remparts",
+    "file": "saint_mitre_les_remparts.geojson",
+    "bbox": [
+      4.975307,
+      43.432985,
+      5.05516,
+      43.480054
+    ]
+  },
+  {
+    "name": "Saint-Paul-lès-Durance",
+    "file": "saint_paul_les_durance.geojson",
+    "bbox": [
+      5.682546,
+      43.647817,
+      5.813505,
+      43.722409
+    ]
+  },
+  {
+    "name": "Saint-Savournin",
+    "file": "saint_savournin.geojson",
+    "bbox": [
+      5.504414,
+      43.388078,
+      5.559768,
+      43.416865
+    ]
+  },
+  {
+    "name": "Saint-Victoret",
+    "file": "saint_victoret.geojson",
+    "bbox": [
+      5.226543,
+      43.401153,
+      5.275005,
+      43.423106
+    ]
+  },
+  {
+    "name": "Saint-Zacharie",
+    "file": "saint_zacharie.geojson",
+    "bbox": [
+      5.682802,
+      43.3408,
+      5.749853,
+      43.409024
+    ]
+  },
+  {
+    "name": "Salon-de-Provence",
+    "file": "salon_de_provence.geojson",
+    "bbox": [
+      4.954053,
+      43.59801,
+      5.14397,
+      43.688054
+    ]
+  },
+  {
+    "name": "Sausset-les-Pins",
+    "file": "sausset_les_pins.geojson",
+    "bbox": [
+      5.088227,
+      43.32827,
+      5.143418,
+      43.366073
+    ]
+  },
+  {
+    "name": "Septèmes-les-Vallons",
+    "file": "septemes_les_vallons.geojson",
+    "bbox": [
+      5.340675,
+      43.369762,
+      5.425422,
+      43.416362
+    ]
+  },
+  {
+    "name": "Simiane-Collongue",
+    "file": "simiane_collongue.geojson",
+    "bbox": [
+      5.392831,
+      43.383302,
+      5.479152,
+      43.447381
+    ]
+  },
+  {
+    "name": "Sénas",
+    "file": "senas.geojson",
+    "bbox": [
+      5.018135,
+      43.708327,
+      5.127903,
+      43.770408
+    ]
+  },
+  {
+    "name": "Trets",
+    "file": "trets.geojson",
+    "bbox": [
+      5.639063,
+      43.399134,
+      5.788342,
+      43.491286
+    ]
+  },
+  {
+    "name": "Vauvenargues",
+    "file": "vauvenargues.geojson",
+    "bbox": [
+      5.534705,
+      43.529417,
+      5.706695,
+      43.594345
+    ]
+  },
+  {
+    "name": "Velaux",
+    "file": "velaux.geojson",
+    "bbox": [
+      5.197819,
+      43.495451,
+      5.294017,
+      43.547302
+    ]
+  },
+  {
+    "name": "Venelles",
+    "file": "venelles.geojson",
+    "bbox": [
+      5.463244,
+      43.566689,
+      5.534962,
+      43.623521
+    ]
+  },
+  {
+    "name": "Ventabren",
+    "file": "ventabren.geojson",
+    "bbox": [
+      5.2607,
+      43.51431,
+      5.348388,
+      43.5749
+    ]
+  },
+  {
+    "name": "Vernègues",
+    "file": "vernegues.geojson",
+    "bbox": [
+      5.149815,
+      43.661291,
+      5.228667,
+      43.706998
+    ]
+  },
+  {
+    "name": "Vitrolles",
+    "file": "vitrolles.geojson",
+    "bbox": [
+      5.220271,
+      43.416086,
+      5.310739,
+      43.485657
+    ]
+  },
+  {
+    "name": "Éguilles",
+    "file": "eguilles.geojson",
+    "bbox": [
+      5.251128,
+      43.53522,
+      5.384384,
+      43.597059
+    ]
+  }
+]

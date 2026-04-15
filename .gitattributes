@@ -1,3 +1,4 @@
-# Git LFS — plus de fichiers volumineux dans ce repo
-# Les données géospatiales sont stockées dans Supabase PostGIS
-# Les GeoJSON sont exclus du versionnement via .gitignore
+# Traiter les GeoJSON des communes comme binaires : évite les diffs bruités
+# et marquer comme généré pour ne pas polluer les stats GitHub
+docs/data/communes/*.geojson binary linguist-generated=true
+docs/data/communes/index.json linguist-generated=true

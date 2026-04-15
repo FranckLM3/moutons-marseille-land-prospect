@@ -76,6 +76,8 @@ def parse_args() -> argparse.Namespace:
                         help="Conserve les parcelles sans propriétaire (jointure gauche)")
     parser.add_argument("--inject-only", action="store_true",
                         help="Génère uniquement docs/index.html depuis le template (sans pipeline géospatial)")
+    parser.add_argument("--split-communes", action="store_true",
+                        help="Exporte aussi un GeoJSON par commune dans docs/data/communes/ + index.json")
     return parser.parse_args()
 
 
@@ -85,7 +87,7 @@ def parse_args() -> argparse.Namespace:
 def run(args: argparse.Namespace) -> None:
     # Imports géospatiaux chargés ici uniquement (pas nécessaires en --inject-only)
     from src.cadastre import add_prairie_ratio, join_owners_to_cadastre, load_cadastre, load_cadastre_dept
-    from src.export import export_geojson, prepare_for_export
+    from src.export import export_by_commune, export_geojson, prepare_for_export
     from src.filters import add_area_columns, filter_by_area
     from src.land_cover import filter_pasture_cs_only, filter_pasture_zones, load_ocsge
     from src.owners import load_owners
@@ -149,6 +151,10 @@ def run(args: argparse.Namespace) -> None:
     cadastre = cadastre.to_crs("EPSG:4326")
     gdf = prepare_for_export(cadastre)
     export_geojson(gdf, args.output)
+
+    if args.split_communes:
+        print("\n[+] Export par commune…")
+        export_by_commune(gdf, ROOT / "docs" / "data" / "communes")
 
     elapsed = time.time() - t0
     print(f"\n✅ Terminé en {elapsed:.1f}s → {args.output}")

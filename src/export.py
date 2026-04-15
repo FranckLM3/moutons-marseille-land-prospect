@@ -4,6 +4,8 @@ Optimisation et export du GeoJSON final pour la cartographie web.
 
 from __future__ import annotations
 
+import json
+import unicodedata
 from pathlib import Path
 
 import geopandas as gpd
@@ -66,6 +68,65 @@ def prepare_for_export(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
 
     print(f"  → {len(gdf):,} features, {len(gdf.columns)} colonnes")
     return gdf
+
+
+def _slugify(text: str) -> str:
+    """Convertit un nom de commune en slug ASCII safe pour un nom de fichier."""
+    text = unicodedata.normalize("NFKD", text)
+    text = "".join(c for c in text if not unicodedata.combining(c))
+    text = text.lower()
+    for ch in (" ", "-", "'", "\u2019"):
+        text = text.replace(ch, "_")
+    text = "".join(c for c in text if c.isalnum() or c == "_")
+    while "__" in text:
+        text = text.replace("__", "_")
+    return text.strip("_")
+
+
+def export_by_commune(gdf: gpd.GeoDataFrame, output_dir: str | Path) -> list[dict]:
+    """Exporte un fichier GeoJSON par commune + un ``index.json`` avec bbox.
+
+    Parameters
+    ----------
+    gdf:
+        GeoDataFrame préparé (WGS84) avec colonne ``nom_commune``.
+    output_dir:
+        Répertoire de sortie (ex. ``docs/data/communes/``).
+
+    Returns
+    -------
+    Liste de dicts index : ``[{"name": ..., "file": ..., "bbox": [minLng, minLat, maxLng, maxLat]}, ...]``
+    """
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    communes = sorted(gdf["nom_commune"].dropna().unique())
+    print(f"  → {len(communes)} communes à exporter…")
+
+    index: list[dict] = []
+    for name in communes:
+        sub = gdf[gdf["nom_commune"] == name].copy()
+        slug = _slugify(name)
+        filename = f"{slug}.geojson"
+        path = output_dir / filename
+
+        sub.to_file(str(path), driver="GeoJSON", mode="w")
+
+        # total_bounds retourne (minx, miny, maxx, maxy) en WGS84 = (minLng, minLat, maxLng, maxLat)
+        minx, miny, maxx, maxy = sub.total_bounds
+        index.append({
+            "name": name,
+            "file": filename,
+            "bbox": [round(float(minx), 6), round(float(miny), 6),
+                     round(float(maxx), 6), round(float(maxy), 6)],
+        })
+        print(f"    {name} → {filename} ({len(sub):,} parcelles)")
+
+    index_path = output_dir / "index.json"
+    index_path.write_text(json.dumps(index, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(f"  ✓ index.json → {len(index)} communes")
+
+    return index
 
 
 def export_geojson(gdf: gpd.GeoDataFrame, output_path: str | Path) -> Path:

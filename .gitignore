@@ -16,8 +16,11 @@ build/
 # ── Données volumineuses (non versionnées) ────────────────────────────────
 data/*
 
-# ── GeoJSON bruts (non versionnés — données dans Supabase) ───────────────
+# ── GeoJSON bruts (non versionnés) ───────────────────────────────────────
 *.geojson
+# Exception : fichiers communes statiques versionnés dans docs/
+!docs/data/communes/*.geojson
+!docs/data/communes/index.json
 
 # ── Formats carto ─────────────────────────────────────────────────────────
 *.mbtiles

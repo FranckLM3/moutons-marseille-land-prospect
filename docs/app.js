@@ -315,84 +315,51 @@ satellite.addTo(map);
 L.control.layers({ 'Carte': osmLayer, 'Satellite': satellite }, {}, { position: 'bottomright' }).addTo(map);
 
 // ── Chargement ────────────────────────────────────────────────────────────
-// Les données sont chargées depuis Supabase à la demande par commune via RPC
+// Les données sont servies comme GeoJSON statiques par commune (docs/data/communes/)
 
 // Cache des features déjà chargées par commune (évite les double-fetch)
-const communeCache = {};  // { nomCommune: [feature, ...] }
+const communeCache = {};   // { nomCommune: [feature, ...] }
+let   communeIndex = [];   // [{ name, file, bbox: [minLng, minLat, maxLng, maxLat] }, ...]
+
+async function loadCommuneList() {
+  try {
+    const res = await fetch('data/communes/index.json');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    communeIndex = await res.json();
+    return communeIndex.map(e => e.name);
+  } catch (err) {
+    console.error('[communes] erreur chargement index.json:', err.message);
+    return [];
+  }
+}
 
 async function fetchParcellesByCommunes(communes) {
-  if (!supabaseEnabled()) return [];
   const toFetch = communes.filter(c => !(c in communeCache));
 
-  if (toFetch.length > 0) {
-    // Une commune à la fois séquentiellement (anti-timeout)
-    const BATCH = 1;
-    for (let i = 0; i < toFetch.length; i += BATCH) {
-      const batch = toFetch.slice(i, i + BATCH);
-      // Pré-remplir le cache (évite double-fetch si appel concurrent)
-      batch.forEach(c => { if (!(c in communeCache)) communeCache[c] = []; });
-      try {
-        const { data, error } = await supabaseClient.rpc('parcelles_by_communes', {
-          communes:    batch,
-          min_prairie: 0,
-        }).range(0, 9999);
-        if (error) throw new Error(error.message);
-        (data || []).forEach(row => {
-          const { geojson, ...props } = row;
-          const feature = {
-            type: 'Feature',
-            geometry: JSON.parse(geojson),
-            properties: { ...props, cs_detail: props.cs_detail },
-          };
-          communeCache[row.nom_commune] = communeCache[row.nom_commune] || [];
-          communeCache[row.nom_commune].push(feature);
-        });
-        console.log(`[communes] batch ${Math.floor(i/BATCH)+1}/${Math.ceil(toFetch.length/BATCH)}: ${batch.join(', ')} — ${(data||[]).length} parcelles`);
-      } catch (err) {
-        console.error('fetchParcellesByCommunes error (batch', batch, '):', err);
-      }
+  for (const name of toFetch) {
+    communeCache[name] = [];  // pré-remplir pour éviter double-fetch concurrent
+    const entry = communeIndex.find(e => e.name === name);
+    if (!entry) { console.warn(`[communes] commune inconnue dans l'index: ${name}`); continue; }
+    try {
+      const res = await fetch(`data/communes/${entry.file}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const fc = await res.json();
+      communeCache[name] = fc.features || [];
+      console.log(`[communes] ${name}: ${communeCache[name].length} parcelles`);
+    } catch (err) {
+      console.error(`[communes] erreur chargement ${entry.file}:`, err.message);
     }
   }
 
-  // Retourner toutes les features des communes demandées
   return communes.flatMap(c => communeCache[c] || []);
-}
-
-async function loadCommuneList() {
-  // Charge la liste des communes distinctes via RPC (évite la limite de 1000 lignes)
-  if (!supabaseEnabled()) return [];
-  const { data, error } = await supabaseClient.rpc('liste_communes');
-  if (error) { console.error('loadCommuneList error:', error); return []; }
-  return (data || []).map(r => r.nom_commune).filter(Boolean);
 }
 
 async function initData() {
   document.getElementById('loading').style.display = 'flex';
 
-  if (!supabaseEnabled()) {
-    const hasVars = (window.SUPABASE_URL || '').length > 0 && !(window.SUPABASE_URL || '').includes('__');
-    const hasCDN  = Boolean(window.supabase);
-    const cause = !hasCDN
-      ? 'Le script Supabase n\'a pas pu être chargé (vérifiez votre connexion internet).'
-      : !hasVars
-      ? 'Les variables SUPABASE_URL / SUPABASE_ANON_KEY ne sont pas injectées.'
-      : 'Erreur à l\'initialisation du client — consultez la console du navigateur.';
-    document.getElementById('loading').innerHTML = `
-      <div style="max-width:340px;text-align:center">
-        <div style="font-size:32px;margin-bottom:12px;color:#f87171">⚑</div>
-        <p style="color:#f87171;font-weight:700;font-size:14px;margin-bottom:8px">Connexion impossible</p>
-        <p style="color:#64748b;font-size:12px;line-height:1.6;margin-bottom:16px">${cause}</p>
-        <button onclick="location.reload()"
-          style="padding:9px 24px;background:#4ade80;color:#111;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer">
-          Réessayer
-        </button>
-      </div>`;
-    return;
-  }
-
   try {
     allCommunes = await loadCommuneList();
-    if (!allCommunes.length) throw new Error('Aucune commune trouvée dans Supabase');
+    if (!allCommunes.length) throw new Error('index.json vide ou introuvable');
 
     // Pré-sélectionner communes Marseille
     allCommunes.forEach(name => {
@@ -406,13 +373,19 @@ async function initData() {
     buildCommuneChips(true); // true = liste déjà chargée, ne pas re-extraire
     applyFilters();
   } catch (err) {
-    console.error('Erreur chargement Supabase :', err.message);
+    console.error('Erreur chargement données :', err.message);
     document.getElementById('loading').innerHTML = `
-      <div style="color:#f87171;font-size:20px;">⚠️</div>
-      <p style="color:#666;max-width:320px;text-align:center;line-height:1.6">
-        Impossible de charger les données Supabase.<br><br>
-        <span style="color:#f87171;font-size:12px">${err.message}</span>
-      </p>`;
+      <div style="max-width:340px;text-align:center">
+        <div style="font-size:32px;margin-bottom:12px;color:#f87171">⚑</div>
+        <p style="color:#f87171;font-weight:700;font-size:14px;margin-bottom:8px">Données introuvables</p>
+        <p style="color:#64748b;font-size:12px;line-height:1.6;margin-bottom:16px">
+          Lancez <code>python scripts/build.py --split-communes</code> pour générer les fichiers communes.
+        </p>
+        <button onclick="location.reload()"
+          style="padding:9px 24px;background:#4ade80;color:#111;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer">
+          Réessayer
+        </button>
+      </div>`;
   }
 }
 
@@ -734,11 +707,8 @@ function _scheduleApplyFilters() {
 
 async function applyFilters() {
   clearTimeout(_applyFiltersTimer);
-  // Charger uniquement les communes absentes du cache — pas de réseau si déjà en cache
-  if (supabaseEnabled()) {
-    allFeatures = await fetchParcellesByCommunes([...selectedCommunes]);
-  }
-
+  // Charger uniquement les communes absentes du cache — sans réseau si déjà en cache
+  allFeatures = await fetchParcellesByCommunes([...selectedCommunes]);
   _renderFilters();
 }
 
@@ -1204,65 +1174,77 @@ function _clearRouteLayers() {
   routeMarkers = [];
 }
 
-// Sous-échantillonne une polyligne [[lng,lat],...] à maxPts points max
-// Garde toujours le premier et le dernier point, distribue uniformément les intermédiaires
-function _simplifyLine(coords, maxPts = 12) {
-  if (coords.length <= maxPts) return coords;
-  const result = [coords[0]];
-  const step = (coords.length - 1) / (maxPts - 1);
-  for (let i = 1; i < maxPts - 1; i++) {
-    result.push(coords[Math.round(i * step)]);
-  }
-  result.push(coords[coords.length - 1]);
-  return result;
+// ── Corridor in-memory ────────────────────────────────────────────────────
+
+function bboxIntersects(bboxA, bboxB) {
+  // bboxA, bboxB = [minLng, minLat, maxLng, maxLat]
+  return bboxA[0] <= bboxB[2] && bboxA[2] >= bboxB[0] &&
+         bboxA[1] <= bboxB[3] && bboxA[3] >= bboxB[1];
 }
 
-// Découpe une polyligne brute en N segments géographiques avec recouvrement d'1 point,
-// puis sous-échantillonne chaque segment à maxPtsPerChunk points.
-// → chaque chunk est une LineString courte et légère pour la RPC Supabase.
-function _splitLineIntoChunks(coords, numChunks = 4, maxPtsPerChunk = 6) {
-  const n = coords.length;
-  if (n <= maxPtsPerChunk) return [_simplifyLine(coords, maxPtsPerChunk)];
-
-  const chunkSize = Math.ceil(n / numChunks);
-  const chunks = [];
-  for (let i = 0; i < numChunks; i++) {
-    const start = i * chunkSize;
-    const end   = Math.min(start + chunkSize + 1, n); // +1 recouvrement
-    const raw   = coords.slice(start, end);
-    chunks.push(_simplifyLine(raw, maxPtsPerChunk));   // ≤ 6 pts par chunk
+function _routeBbox(coords) {
+  // coords = [[lng, lat], ...] (format ORS)
+  let minLng = Infinity, minLat = Infinity, maxLng = -Infinity, maxLat = -Infinity;
+  for (const [lng, lat] of coords) {
+    if (lng < minLng) minLng = lng;
+    if (lat < minLat) minLat = lat;
+    if (lng > maxLng) maxLng = lng;
+    if (lat > maxLat) maxLat = lat;
   }
-  return chunks;
+  const pad = 0.05; // ~5 km de marge
+  return [minLng - pad, minLat - pad, maxLng + pad, maxLat + pad];
 }
 
-// Appelle la RPC parcelles_dans_corridor sur chaque segment séquentiellement (1 par 1)
-// Retourne les lignes dédupliquées (par id)
-async function _fetchCorridorChunked(allCoords, radiusKm, minPrairie) {
-  // 1 chunk par 15 pts bruts, min 4, max 40 — adapté aux très longs trajets (>500 pts ORS)
-  const numChunks = Math.max(4, Math.min(40, Math.ceil(allCoords.length / 15)));
-  const chunks = _splitLineIntoChunks(allCoords, numChunks, 4);
-  console.log(`[corridor] ${allCoords.length} pts → ${chunks.length} chunks séquentiels (≤4 pts chacun)`);
+async function _loadCommunesForRouteBbox(coords) {
+  const routeBbox = _routeBbox(coords);
+  const toLoad = communeIndex.filter(c => bboxIntersects(c.bbox, routeBbox) && !(c.name in communeCache));
+  if (!toLoad.length) return;
 
-  const seen   = new Set();
-  const merged = [];
+  console.log(`[corridor] chargement ${toLoad.length} communes dans le corridor…`);
+  await Promise.all(toLoad.map(async c => {
+    communeCache[c.name] = [];  // pré-remplir pour éviter double-fetch concurrent
+    try {
+      const res = await fetch(`data/communes/${c.file}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const fc = await res.json();
+      communeCache[c.name] = fc.features || [];
+      console.log(`[corridor] ${c.name}: ${communeCache[c.name].length} parcelles`);
+    } catch (err) {
+      console.warn(`[corridor] erreur chargement ${c.file}:`, err.message);
+    }
+  }));
+}
 
-  // Exécution 1 par 1 — évite toute surcharge simultanée sur Supabase
-  for (let i = 0; i < chunks.length; i++) {
-    const lineGeoJSON = JSON.stringify({ type: 'LineString', coordinates: chunks[i] });
-    const { data, error } = await supabaseClient.rpc('parcelles_dans_corridor', {
-      route_geojson: lineGeoJSON,
-      radius_km:     radiusKm,
-      min_prairie:   minPrairie,
-    });
-    if (error) { console.warn(`[corridor] chunk ${i} erreur:`, error.message); continue; }
-    console.log(`[corridor] chunk ${i}/${chunks.length - 1}: ${(data||[]).length} parcelles`);
-    for (const row of (data || [])) {
-      if (!seen.has(row.id)) { seen.add(row.id); merged.push(row); }
+async function _findCorridorInMemory(allCoords, radiusKm, minArea) {
+  // 1. Charger les communes dont la bbox intersecte le corridor
+  await _loadCommunesForRouteBbox(allCoords);
+
+  // 2. Convertir la polyligne en {lat, lng}[] pour distToPolyline
+  const polyline = allCoords.map(([lng, lat]) => ({ lat, lng }));
+
+  // 3. Filtrer toutes les features du cache par distance et surface
+  const seen    = new Set();
+  const results = [];
+
+  for (const features of Object.values(communeCache)) {
+    for (const feature of features) {
+      const id = feature.properties?.id;
+      if (!id || seen.has(id)) continue;
+
+      if ((feature.properties?.area_m2 || 0) < minArea) continue;
+
+      const c = centroid(feature);
+      if (!c) continue;
+
+      if (distToPolyline(c, polyline) <= radiusKm) {
+        seen.add(id);
+        results.push(feature);
+      }
     }
   }
 
-  console.log(`[corridor] total dédupliqué: ${merged.length} parcelles`);
-  return merged;
+  console.log(`[corridor] in-memory: ${results.length} parcelles dans ${radiusKm} km`);
+  return results;
 }
 
 async function computeRoute(keepSelected = false) {
@@ -1331,15 +1313,11 @@ async function computeRoute(keepSelected = false) {
     if (!keepSelected) {
       setRouteStatus('Recherche des parcelles sur le trajet…', '');
 
-      // Découper la polyligne en segments courts et appeler la RPC en parallèle (évite timeout)
       const allCoords = baseData.features[0].geometry.coordinates;
-      const corridorRows = await _fetchCorridorChunked(allCoords, radiusKm, minArea);
+      const corridorFeatures = await _findCorridorInMemory(allCoords, radiusKm, minArea);
 
-      candidateParcels = (corridorRows || [])
-        .map(row => {
-          const feature = { type: 'Feature', properties: row, geometry: JSON.parse(row.geojson) };
-          return { feature, center: centroid(feature), id: row.id || '' };
-        })
+      candidateParcels = corridorFeatures
+        .map(feature => ({ feature, center: centroid(feature), id: feature.properties?.id || '' }))
         .filter(p => p.center !== null);
     }
     // Exclure les parcelles déjà sélectionnées + filtrer par type de propriétaire

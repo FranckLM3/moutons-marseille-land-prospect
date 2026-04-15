@@ -2528,6 +2528,21 @@ function poiDisplayName(tags) {
   return 'Point d\'intérêt';
 }
 
+// Reconstruit une adresse lisible depuis les tags OSM addr:*
+function poiAddress(tags) {
+  const parts = [];
+  const num    = tags['addr:housenumber'];
+  const street = tags['addr:street'];
+  const city   = tags['addr:city'];
+  const post   = tags['addr:postcode'];
+  if (num && street)  parts.push(`${num} ${street}`);
+  else if (street)    parts.push(street);
+  if (post && city)   parts.push(`${post} ${city}`);
+  else if (city)      parts.push(city);
+  else if (post)      parts.push(post);
+  return parts.join(', ');
+}
+
 function poiTypeLabel(tags) {
   if (tags.natural === 'spring')            return 'Source';
   if (tags.amenity === 'drinking_water')    return 'Eau potable';
@@ -2569,9 +2584,13 @@ async function fetchAllPoi(coords) {
   function enrich(list, cat) {
     return filterPoiByDistance(list, polyline, 2.0).map(p => ({
       ...p,
-      name: poiDisplayName(p.tags),
+      name:      poiDisplayName(p.tags),
       typeLabel: poiTypeLabel(p.tags),
-      category: cat,
+      address:   poiAddress(p.tags),
+      phone:     p.tags?.phone || p.tags?.['contact:phone'] || '',
+      website:   p.tags?.website || p.tags?.['contact:website'] || '',
+      hours:     p.tags?.opening_hours || '',
+      category:  cat,
     }));
   }
 
@@ -2599,14 +2618,23 @@ function kmlRenderPoi(poiData) {
       const marker = L.circleMarker([poi.lat, poi.lng], {
         radius: 6, color, fillColor: color,
         fillOpacity: 0.9, weight: 2,
-      }).bindPopup(
-        `<div class="poi-popup">
+      }).bindPopup(() => {
+        const showContact = (cat === 'haltes' || cat === 'ravitaillement');
+        const addrHtml    = (showContact && poi.address)
+          ? `<div class="poi-popup-addr">${escapeHtml(poi.address)}</div>` : '';
+        const phoneHtml   = (showContact && poi.phone)
+          ? `<div class="poi-popup-contact"><a href="tel:${escapeHtml(poi.phone)}">${escapeHtml(poi.phone)}</a></div>` : '';
+        const webHtml     = (showContact && poi.website)
+          ? `<div class="poi-popup-contact"><a href="${escapeHtml(poi.website)}" target="_blank" rel="noopener">Site web</a></div>` : '';
+        const hoursHtml   = (showContact && poi.hours)
+          ? `<div class="poi-popup-hours">${escapeHtml(poi.hours)}</div>` : '';
+        return `<div class="poi-popup">
           <div class="poi-popup-title">${emoji} ${escapeHtml(poi.name)}</div>
           <div class="poi-popup-meta">${escapeHtml(poi.typeLabel)}</div>
+          ${addrHtml}${phoneHtml}${webHtml}${hoursHtml}
           <div class="poi-popup-dist">${poi.distKm} km du tracé</div>
-        </div>`,
-        { maxWidth: 320, minWidth: 200 }
-      );
+        </div>`;
+      }, { maxWidth: 360, minWidth: 220 });
       kmlPoiLayer.addLayer(marker);
       poi._marker = marker;
     }
@@ -2659,10 +2687,16 @@ function kmlRenderPoiSidebar(poiData) {
       for (const poi of list) {
         const item = document.createElement('div');
         item.className = 'kml-poi-item';
+        const showAddr = (cat === 'haltes' || cat === 'ravitaillement');
+        const addrLine = (showAddr && poi.address)
+          ? `<span class="kml-poi-item-addr">${escapeHtml(poi.address)}</span>` : '';
         item.innerHTML = `
           <span class="kml-poi-dot" style="background:${cfg.color}"></span>
-          <span class="kml-poi-item-name">${escapeHtml(poi.name)}</span>
-          <span class="kml-poi-item-type">${escapeHtml(poi.typeLabel)}</span>
+          <span class="kml-poi-item-main">
+            <span class="kml-poi-item-name">${escapeHtml(poi.name)}</span>
+            <span class="kml-poi-item-type">${escapeHtml(poi.typeLabel)}</span>
+            ${addrLine}
+          </span>
           <span class="kml-poi-dist">${poi.distKm} km</span>`;
         item.addEventListener('click', () => {
           map.panTo([poi.lat, poi.lng], { animate: true, duration: 0.5 });

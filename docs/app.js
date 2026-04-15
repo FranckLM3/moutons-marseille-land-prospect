@@ -335,12 +335,16 @@ L.control.layers({ 'Carte': osmLayer, 'Satellite': satellite }, {}, { position: 
       header.innerHTML = '<span>🗺 Couches</span><span class="mlc-chevron">▾</span>';
 
       const body = L.DomUtil.create('div', 'mlc-body', el);
-      body.innerHTML = LAYERS_CONFIG.map(({ key, color, label }) => `
-        <label class="layer-toggle-row" title="Afficher/masquer ${label}">
+      body.innerHTML = LAYERS_CONFIG.map(({ key, color, label }) => {
+        const isOn   = layerVisible[key] !== false;
+        const opac   = isOn ? '1' : '0.45';
+        const chk    = isOn ? 'checked' : '';
+        return `<label class="layer-toggle-row" style="opacity:${opac}" title="Afficher/masquer ${label}">
           <span class="layer-dot" style="background:${color}"></span>
           <span style="flex:1">${label}</span>
-          <input type="checkbox" class="layer-toggle-cb" data-key="${key}" checked />
-        </label>`).join('');
+          <input type="checkbox" class="layer-toggle-cb" data-key="${key}" ${chk} />
+        </label>`;
+      }).join('');
 
       // Toggle panel open/close
       let open = true;
@@ -1779,7 +1783,7 @@ function _pointInGeometry(lat, lng, geometry) {
 let routeMode = 'ors'; // 'ors' | 'kml'
 
 // ── Visibilité des couches cartographiques ────────────────────────────────────
-const layerVisible = { terrains: true, route: true, communes: true, poi: true, vegetation: true };
+const layerVisible = { terrains: false, route: true, communes: true, poi: true, vegetation: true };
 
 function _getLayerRefs(key) {
   const refs = [];

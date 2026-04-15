@@ -2405,11 +2405,18 @@ const POI_CATEGORIES = {
   eau: {
     emoji: '💧', label: 'Points d\'eau', color: '#60a5fa',
     query: (bbox) => `[out:json][timeout:30];
-(node["natural"="spring"](${bbox});
+(
+ node["natural"="spring"](${bbox});
  node["amenity"="drinking_water"](${bbox});
  node["amenity"="watering_place"](${bbox});
- node["natural"="water"](${bbox});
- way["natural"="water"](${bbox}););out center;`,
+ node["amenity"="fountain"](${bbox});
+ node["amenity"="water_point"](${bbox});
+ node["man_made"="water_well"](${bbox});
+ node["man_made"="water_tap"](${bbox});
+ node["man_made"="water_tower"](${bbox});
+ node["natural"="water"]["name"](${bbox});
+ way["natural"="water"]["name"](${bbox});
+);out center;`,
   },
   haltes: {
     emoji: '🏡', label: 'Haltes / Partenaires', color: '#fb923c',
@@ -2519,8 +2526,13 @@ function poiDisplayName(tags) {
   if (tags.ref)         return tags.ref;
   // Fallback par type
   if (tags.natural === 'spring')            return 'Source';
-  if (tags.amenity === 'drinking_water')    return 'Fontaine / eau potable';
+  if (tags.amenity === 'drinking_water')    return 'Eau potable';
   if (tags.amenity === 'watering_place')    return 'Abreuvoir';
+  if (tags.amenity === 'fountain')          return 'Fontaine';
+  if (tags.amenity === 'water_point')       return 'Point d\'eau';
+  if (tags.man_made === 'water_well')       return 'Puits';
+  if (tags.man_made === 'water_tap')        return 'Robinet d\'eau';
+  if (tags.man_made === 'water_tower')      return 'Château d\'eau';
   if (tags.natural === 'water')             return 'Plan d\'eau';
   if (tags.tourism === 'farm')              return tags.operator || 'Ferme';
   if (tags.tourism === 'camp_site')         return 'Camping';
@@ -2544,6 +2556,11 @@ function poiTypeLabel(tags) {
   if (tags.natural === 'spring')            return 'Source';
   if (tags.amenity === 'drinking_water')    return 'Eau potable';
   if (tags.amenity === 'watering_place')    return 'Abreuvoir';
+  if (tags.amenity === 'fountain')          return 'Fontaine';
+  if (tags.amenity === 'water_point')       return 'Point d\'eau';
+  if (tags.man_made === 'water_well')       return 'Puits';
+  if (tags.man_made === 'water_tap')        return 'Robinet';
+  if (tags.man_made === 'water_tower')      return 'Château d\'eau';
   if (tags.natural === 'water')             return 'Eau';
   if (tags.tourism === 'farm')              return 'Ferme';
   if (tags.tourism === 'camp_site')         return 'Camping';
@@ -2607,9 +2624,12 @@ function kmlRenderPoi(poiData) {
         radius: 6, color, fillColor: color,
         fillOpacity: 0.9, weight: 2,
       }).bindPopup(
-        `<b>${emoji} ${escapeHtml(poi.name)}</b><br>` +
-        `<small>${escapeHtml(poi.typeLabel)} · ${poi.distKm} km du tracé</small><br>` +
-        `<small style="color:#999">${poi.lat.toFixed(5)}, ${poi.lng.toFixed(5)}</small>`
+        `<div class="poi-popup">
+          <div class="poi-popup-title">${emoji} ${escapeHtml(poi.name)}</div>
+          <div class="poi-popup-meta">${escapeHtml(poi.typeLabel)}</div>
+          <div class="poi-popup-dist">${poi.distKm} km du tracé</div>
+        </div>`,
+        { maxWidth: 320, minWidth: 200 }
       );
       kmlPoiLayer.addLayer(marker);
       poi._marker = marker;

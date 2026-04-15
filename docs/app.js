@@ -1919,36 +1919,41 @@ function sampleRoutePoints(coords, stepMeters = 500) {
 async function reverseGeocodePoint(lng, lat) {
   // Tentative 1 : api-adresse.data.gouv.fr
   try {
-    const url = `https://api-adresse.data.gouv.fr/reverse/?lon=${lng}&lat=${lat}&limit=1`;
+    const url = `https://api-adresse.data.gouv.fr/reverse/?lon=${lng}&lat=${lat}&limit=3`;
     const res = await fetch(url);
     if (res.ok) {
       const json = await res.json();
-      const feat = json.features?.[0];
-      if (feat) {
-        const p = feat.properties;
-        const name = p.city || p.municipality || p.name;
-        if (name) {
-          const insee = p.citycode || '';
-          const dept  = _parseDept(p.postcode || insee);
-          return { name, insee, dept, type: p.type || 'municipality' };
-        }
+      // Prefer locality/hamlet results over municipality/street for finer granularity
+      const feats = json.features || [];
+      const best  = feats.find(f => f.properties.type === 'locality')
+                 || feats.find(f => f.properties.type === 'municipality')
+                 || feats[0];
+      if (best) {
+        const p    = best.properties;
+        const type = p.type || 'municipality';
+        const insee = p.citycode || '';
+        const dept  = _parseDept(p.postcode || insee);
+        // For locality features, use the locality name; for municipality use city
+        const name = (type === 'locality') ? (p.name || p.city) : (p.city || p.municipality || p.name);
+        if (name) return { name, insee, dept, type };
       }
     }
   } catch(_) {}
 
-  // Tentative 2 : Nominatim
+  // Tentative 2 : Nominatim (zoom=16 for hamlet-level precision)
   try {
-    const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&addressdetails=1&zoom=14&accept-language=fr`;
+    const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&addressdetails=1&zoom=16&accept-language=fr`;
     const res = await fetch(url, { headers: { 'User-Agent': 'MoutonsMarseillais-TranshumanceMapper/1.0' } });
     if (res.ok) {
       const json = await res.json();
       const addr = json.address || {};
-      const name = addr.village || addr.hamlet || addr.suburb || addr.town || addr.city || addr.municipality;
+      // hamlet > village > suburb > town > city — prefer smallest unit
+      const name = addr.hamlet || addr.village || addr.suburb || addr.town || addr.city || addr.municipality;
       if (name) {
         const postcode = addr.postcode || '';
         const dept = _parseDept(postcode);
-        const type = addr.village ? 'locality'
-                   : addr.hamlet  ? 'hamlet'
+        const type = addr.hamlet  ? 'hamlet'
+                   : addr.village ? 'locality'
                    : addr.town    ? 'municipality'
                    : 'municipality';
         return { name, insee: '', dept, type };
@@ -1967,29 +1972,87 @@ function _parseDept(code) {
   return n || '';
 }
 
-// ── Extraction principale ─────────────────────────────────────────────────────
+// ── Extraction principale via Overpass (lieux nommés OSM) ─────────────────────
 async function extractLocalities(allCoords, onProgress) {
-  const sampled = sampleRoutePoints(allCoords, 500);
-  const total   = sampled.length;
-  const seen    = new Map(); // insee|name → index
+  if (kmlAbortFlag) return [];
+  onProgress(1, 4);
 
+  const bbox      = routeBboxWithMargin(allCoords, 0.04);
+  const radiusKm  = parseFloat(document.getElementById('kml-radius')?.value || '2') || 2;
+  const polyline  = allCoords.map(([lng, lat]) => ({ lat, lng }));
+
+  // Query Overpass for all named places in bbox
+  const overpassQuery = `[out:json][timeout:30];
+(
+  node["place"~"^(city|town|village|hamlet|locality|isolated_dwelling|suburb|quarter)$"]["name"](${bbox.overpassStr});
+);
+out body;`;
+
+  onProgress(2, 4);
+  let elements = [];
+  try {
+    elements = await fetchOverpassPoi(overpassQuery);
+  } catch(e) {
+    console.warn('Overpass places query failed, falling back to sampling', e);
+    return _extractLocalitiesFallback(allCoords, onProgress);
+  }
+
+  if (kmlAbortFlag) return [];
+
+  // Filter by distance to route
+  const nearby = filterPoiByDistance(elements, polyline, radiusKm);
+  onProgress(3, 4);
+
+  // Deduplicate by name (case-insensitive), enrich with INSEE
+  const seen    = new Set();
   const results = [];
-  for (let i = 0; i < total; i++) {
+  for (const el of nearby) {
     if (kmlAbortFlag) break;
+    const name = el.tags?.name;
+    if (!name) continue;
+    const key = name.toLowerCase().trim();
+    if (seen.has(key)) continue;
+    seen.add(key);
 
-    const [lng, lat] = sampled[i];
-    onProgress(i + 1, total);
+    const placeType = el.tags?.place || 'locality';
+    // OSM ref:INSEE tag (present on many French nodes) — always the commune INSEE
+    let insee = el.tags?.['ref:INSEE'] || el.tags?.['ref:insee'] || '';
+    let dept  = _parseDept(insee);
 
-    const loc = await reverseGeocodePoint(lng, lat);
-    if (loc) {
-      const key = loc.insee || loc.name;
-      if (!seen.has(key)) {
-        seen.set(key, results.length);
-        results.push({ ...loc, lat, lng });
-      }
+    // If no INSEE from OSM, ask api-adresse (returns commune citycode even for hamlets)
+    if (!insee) {
+      try {
+        const res = await fetch(`https://api-adresse.data.gouv.fr/reverse/?lon=${el.lng}&lat=${el.lat}&limit=1`);
+        if (res.ok) {
+          const json = await res.json();
+          const p    = json.features?.[0]?.properties;
+          if (p) { insee = p.citycode || ''; dept = _parseDept(p.postcode || insee); }
+        }
+      } catch(_) {}
+      await new Promise(r => setTimeout(r, 80));
     }
 
-    // Rate limiting : 90ms entre requêtes
+    results.push({ name, insee, dept, type: placeType, lat: el.lat, lng: el.lng, distKm: el.distKm });
+  }
+
+  onProgress(4, 4);
+  return results;
+}
+
+// Fallback: sampling + reverse geocoding (used if Overpass fails)
+async function _extractLocalitiesFallback(allCoords, onProgress) {
+  const sampled = sampleRoutePoints(allCoords, 250);
+  const seen    = new Map();
+  const results = [];
+  for (let i = 0; i < sampled.length; i++) {
+    if (kmlAbortFlag) break;
+    const [lng, lat] = sampled[i];
+    onProgress(i + 1, sampled.length);
+    const loc = await reverseGeocodePoint(lng, lat);
+    if (loc) {
+      const key = `${loc.insee}_${loc.name.toLowerCase()}`;
+      if (!seen.has(key)) { seen.set(key, 1); results.push({ ...loc, lat, lng }); }
+    }
     await new Promise(r => setTimeout(r, 90));
   }
   return results;
@@ -2191,8 +2254,10 @@ async function kmlRunExtraction() {
   _kmlRenderParcelLayer(corridorFeatures);
 
   // ── Étape 2 : communes ────────────────────────────────────────────────────
+  const localityLabels = ['Préparation…', 'Requête OSM…', 'Filtrage…', 'Enrichissement INSEE…'];
   const localities = await extractLocalities(allCoords, (current, total) => {
-    progressLabel.textContent = `Extraction des communes… ${current} / ${total} points`;
+    const label = localityLabels[current - 1] || `Lieux ${current}/${total}`;
+    progressLabel.textContent = `Recherche des lieux — ${label}`;
     progressBar.style.width   = `${Math.round(20 + current / total * 60)}%`;
   });
 

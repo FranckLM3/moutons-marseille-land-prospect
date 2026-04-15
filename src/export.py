@@ -122,9 +122,20 @@ def export_by_commune(gdf: gpd.GeoDataFrame, output_dir: str | Path) -> list[dic
         })
         print(f"    {name} → {filename} ({len(sub):,} parcelles)")
 
+    # Merger avec un index existant (cas multi-département)
     index_path = output_dir / "index.json"
+    if index_path.exists():
+        try:
+            existing = json.loads(index_path.read_text(encoding="utf-8"))
+            existing_by_name = {e["name"]: e for e in existing}
+            for entry in index:
+                existing_by_name[entry["name"]] = entry  # écrase si même nom
+            index = sorted(existing_by_name.values(), key=lambda e: e["name"])
+        except (json.JSONDecodeError, KeyError):
+            pass  # index corrompu → on écrase
+
     index_path.write_text(json.dumps(index, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"  ✓ index.json → {len(index)} communes")
+    print(f"  ✓ index.json → {len(index)} communes au total")
 
     return index
 

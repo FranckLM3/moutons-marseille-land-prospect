@@ -64,6 +64,8 @@ def process_dept(
     build_only: bool,
     import_only: bool,
     keep_geojson: bool,
+    split_communes: bool = False,
+    min_area: int = 5000,
 ) -> tuple[str, bool, str]:
     """
     Worker : build + import pour un département.
@@ -87,11 +89,13 @@ def process_dept(
             "--gpkg",     str(gpkg),
             "--owners",   owners,
             "--output",   output_path,
-            "--min-area", "1000",  # écarte les micro-parcelles avant l'intersection OCS GE
+            "--min-area", str(min_area),
         ]
         # Passer --dept seulement pour les depts hors AMP (13 = AMP)
         if dept != "13":
             cmd_build += ["--dept", dept]
+        if split_communes:
+            cmd_build += ["--split-communes"]
 
         log(f"[{dept}] 🔨 build.py…")
         t0 = time.time()
@@ -152,13 +156,18 @@ def parse_args() -> argparse.Namespace:
                         help="Import seulement (pasture_<dept>.geojson déjà présents)")
     parser.add_argument("--keep-geojson", action="store_true",
                         help="Conserver les GeoJSON intermédiaires après import")
+    parser.add_argument("--split-communes", action="store_true",
+                        help="Exporter aussi un GeoJSON par commune dans docs/data/communes/")
+    parser.add_argument("--min-area", type=int, default=5000,
+                        help="Surface minimale des parcelles en m² (défaut: 5000)")
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
     depts = args.dept or list(PACA_DEPTS.keys())
-    workers = args.workers or min(len(depts), 3)
+    # --split-communes écrit dans docs/data/communes/index.json : séquentiel obligatoire
+    workers = 1 if args.split_communes else (args.workers or min(len(depts), 3))
 
     print(f"\n🚀 Pipeline PACA — {len(depts)} depts × (build+import) — {workers} workers parallèles")
     print(f"   Depts : {', '.join(f'{d} ({PACA_DEPTS[d]})' for d in depts)}")
@@ -180,6 +189,8 @@ def main() -> None:
                 args.build_only,
                 args.import_only,
                 args.keep_geojson,
+                args.split_communes,
+                args.min_area,
             ): dept
             for dept in depts
         }

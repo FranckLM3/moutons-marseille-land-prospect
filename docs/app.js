@@ -1147,9 +1147,18 @@ function projectionOnPolyline(p, coords) {
 }
 
 function centroid(feature) {
+  // Calcul géométrique direct — évite de créer un layer Leaflet pour chaque feature
   try {
-    const b = L.geoJSON(feature).getBounds().getCenter();
-    return { lat: b.lat, lng: b.lng };
+    const geom = feature?.geometry;
+    if (!geom?.coordinates) return null;
+    let ring;
+    if (geom.type === 'Polygon')           ring = geom.coordinates[0];
+    else if (geom.type === 'MultiPolygon') ring = geom.coordinates[0][0];
+    else return null;
+    if (!ring?.length) return null;
+    let sumLng = 0, sumLat = 0;
+    for (const [lng, lat] of ring) { sumLng += lng; sumLat += lat; }
+    return { lat: sumLat / ring.length, lng: sumLng / ring.length };
   } catch(_) { return null; }
 }
 
@@ -1215,14 +1224,31 @@ async function _loadCommunesForRouteBbox(coords) {
   }));
 }
 
+// Sous-échantillonne uniformément une polyligne (garde premier + dernier + N-2 intermédiaires)
+function _downsampleCoords(coords, maxPts = 30) {
+  if (coords.length <= maxPts) return coords;
+  const result = [coords[0]];
+  const step = (coords.length - 1) / (maxPts - 1);
+  for (let i = 1; i < maxPts - 1; i++) result.push(coords[Math.round(i * step)]);
+  result.push(coords[coords.length - 1]);
+  return result;
+}
+
 async function _findCorridorInMemory(allCoords, radiusKm, minArea) {
   // 1. Charger les communes dont la bbox intersecte le corridor
   await _loadCommunesForRouteBbox(allCoords);
 
-  // 2. Convertir la polyligne en {lat, lng}[] pour distToPolyline
-  const polyline = allCoords.map(([lng, lat]) => ({ lat, lng }));
+  // 2. Polyligne simplifiée à 30 pts pour distToPolyline (réduction ~16x du nb de segments)
+  const simplCoords  = _downsampleCoords(allCoords, 30);
+  const polyline     = simplCoords.map(([lng, lat]) => ({ lat, lng }));
 
-  // 3. Filtrer toutes les features du cache par distance et surface
+  // 3. Bbox du corridor élargie de radiusKm (pré-filtre bbox O(1) avant distance O(n))
+  const DEG_PER_KM   = 1 / 111;
+  const pad          = radiusKm * DEG_PER_KM;
+  const rb           = _routeBbox(allCoords);
+  const corridorBbox = [rb[0] - pad, rb[1] - pad, rb[2] + pad, rb[3] + pad];
+
+  // 4. Filtrer toutes les features du cache
   const seen    = new Set();
   const results = [];
 
@@ -1230,11 +1256,14 @@ async function _findCorridorInMemory(allCoords, radiusKm, minArea) {
     for (const feature of features) {
       const id = feature.properties?.id;
       if (!id || seen.has(id)) continue;
-
       if ((feature.properties?.area_m2 || 0) < minArea) continue;
 
       const c = centroid(feature);
       if (!c) continue;
+
+      // Pré-filtre bbox : élimine ~80 % des features sans calcul de distance
+      if (c.lng < corridorBbox[0] || c.lng > corridorBbox[2] ||
+          c.lat < corridorBbox[1] || c.lat > corridorBbox[3]) continue;
 
       if (distToPolyline(c, polyline) <= radiusKm) {
         seen.add(id);
@@ -1243,7 +1272,7 @@ async function _findCorridorInMemory(allCoords, radiusKm, minArea) {
     }
   }
 
-  console.log(`[corridor] in-memory: ${results.length} parcelles dans ${radiusKm} km`);
+  console.log(`[corridor] in-memory: ${results.length} parcelles dans ${radiusKm} km (polyline ${allCoords.length}→${simplCoords.length} pts)`);
   return results;
 }
 

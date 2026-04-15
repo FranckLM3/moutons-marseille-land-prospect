@@ -21,6 +21,7 @@ data/*
 # Exception : fichiers communes statiques versionnés dans docs/
 !docs/data/communes/*.geojson
 !docs/data/communes/index.json
+!docs/data/geo/communes-paca.geojson
 
 # ── Formats carto ─────────────────────────────────────────────────────────
 *.mbtiles

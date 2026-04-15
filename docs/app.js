@@ -1741,6 +1741,40 @@ let kmlPoiLayer      = null; // LayerGroup Leaflet pour les marqueurs POI
 let kmlParcelLayer   = null; // Parcelles corridor KML
 let kmlAbortFlag     = false;
 
+// ── Cache polygones communes (chargé une fois depuis docs/data/geo/communes-paca.geojson) ─
+let _communesGeoCache = null;   // FeatureCollection complète
+let _communesGeoLoading = null; // Promise en cours (évite double-fetch)
+
+async function loadCommunesGeo() {
+  if (_communesGeoCache) return _communesGeoCache;
+  if (_communesGeoLoading) return _communesGeoLoading;
+  _communesGeoLoading = fetch('data/geo/communes-paca.geojson')
+    .then(r => r.ok ? r.json() : null)
+    .then(data => { _communesGeoCache = data; _communesGeoLoading = null; return data; })
+    .catch(() => { _communesGeoLoading = null; return null; });
+  return _communesGeoLoading;
+}
+
+// Ray-casting point-in-polygon (coordonnées GeoJSON [lng, lat])
+function _pointInRing(lat, lng, ring) {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i], [xj, yj] = ring[j];
+    if (((yi > lat) !== (yj > lat)) && (lng < (xj - xi) * (lat - yi) / (yj - yi) + xi))
+      inside = !inside;
+  }
+  return inside;
+}
+
+function _pointInGeometry(lat, lng, geometry) {
+  if (!geometry) return false;
+  if (geometry.type === 'Polygon')
+    return _pointInRing(lat, lng, geometry.coordinates[0]);
+  if (geometry.type === 'MultiPolygon')
+    return geometry.coordinates.some(poly => _pointInRing(lat, lng, poly[0]));
+  return false;
+}
+
 // ── Source de l'itinéraire ────────────────────────────────────────────────────
 let routeMode = 'ors'; // 'ors' | 'kml'
 
@@ -1948,76 +1982,59 @@ function _parseDept(code) {
   return n || '';
 }
 
-// ── Extraction principale via Overpass (lieux nommés OSM) ─────────────────────
+// ── Détection des communes via point-in-polygon sur données pré-chargées ──────
 async function extractLocalities(allCoords, onProgress) {
   if (kmlAbortFlag) return [];
-  onProgress(1, 4);
+  onProgress(1, 3);
 
-  const bbox      = routeBboxWithMargin(allCoords, 0.04);
-  const radiusKm  = parseFloat(document.getElementById('kml-radius')?.value || '2') || 2;
-  const polyline  = allCoords.map(([lng, lat]) => ({ lat, lng }));
+  // Chargement du cache communes (une seule fois, ensuite instantané)
+  const geo = await loadCommunesGeo();
+  onProgress(2, 3);
 
-  // Query Overpass for all named places in bbox
-  const overpassQuery = `[out:json][timeout:30];
-(
-  node["place"~"^(city|town|village|hamlet|locality|isolated_dwelling|suburb|quarter)$"]["name"](${bbox.overpassStr});
-);
-out body;`;
-
-  onProgress(2, 4);
-  let elements = [];
-  try {
-    elements = await fetchOverpassPoi(overpassQuery);
-  } catch(e) {
-    console.warn('Overpass places query failed, falling back to sampling', e);
+  if (!geo || kmlAbortFlag) {
+    // Fallback si le fichier statique est absent
     return _extractLocalitiesFallback(allCoords, onProgress);
   }
 
-  if (kmlAbortFlag) return [];
+  // Pré-filtre bbox : on ne garde que les communes dont la bbox intersecte le tracé élargi
+  const routeBbox  = routeBboxWithMargin(allCoords, 0.01);
+  const candidates = geo.features.filter(f => {
+    const b = f.properties?.bbox;
+    return b && b[0] <= routeBbox.maxLng && b[2] >= routeBbox.minLng &&
+               b[1] <= routeBbox.maxLat && b[3] >= routeBbox.minLat;
+  });
 
-  // Filter by distance to route
-  const nearby = filterPoiByDistance(elements, polyline, radiusKm);
-  onProgress(3, 4);
+  // Échantillonnage du tracé + point-in-polygon (purement en mémoire, zéro requête réseau)
+  const sampled   = sampleRoutePoints(allCoords, 400);
+  const seenCode  = new Set();
+  const results   = [];
 
-  // Deduplicate by name (case-insensitive), build candidate list
-  const seen       = new Set();
-  const candidates = [];
-  for (const el of nearby) {
-    const name = el.tags?.name;
-    if (!name) continue;
-    const key = name.toLowerCase().trim();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    const placeType = el.tags?.place || 'locality';
-    const insee     = el.tags?.['ref:INSEE'] || el.tags?.['ref:insee'] || '';
-    candidates.push({ name, insee, placeType, lat: el.lat, lng: el.lng, distKm: el.distKm });
+  for (const [lng, lat] of sampled) {
+    if (kmlAbortFlag) break;
+    for (const feature of candidates) {
+      const code = feature.properties?.code;
+      if (!code || seenCode.has(code)) continue;
+      if (_pointInGeometry(lat, lng, feature.geometry)) {
+        seenCode.add(code);
+        results.push({
+          name:     feature.properties.nom,
+          insee:    code,
+          dept:     _parseDept(code),
+          type:     'municipality',
+          lat, lng,
+          geometry: feature.geometry,   // déjà en mémoire — zéro requête API
+        });
+      }
+    }
   }
 
-  // Parallel INSEE enrichment — only for entries without OSM ref:INSEE
-  // (api-adresse handles concurrent requests; no artificial delay needed)
-  onProgress(4, 4);
-  const results = await Promise.all(candidates.map(async c => {
-    let { insee } = c;
-    let dept = _parseDept(insee);
-    if (!insee) {
-      try {
-        const res = await fetch(`https://api-adresse.data.gouv.fr/reverse/?lon=${c.lng}&lat=${c.lat}&limit=1`);
-        if (res.ok) {
-          const json = await res.json();
-          const p    = json.features?.[0]?.properties;
-          if (p) { insee = p.citycode || ''; dept = _parseDept(p.postcode || insee); }
-        }
-      } catch(_) {}
-    }
-    return { name: c.name, insee, dept, type: c.placeType, lat: c.lat, lng: c.lng, distKm: c.distKm };
-  }));
-
+  onProgress(3, 3);
   return results;
 }
 
-// Fallback: sampling + reverse geocoding (used if Overpass fails)
+// Fallback si communes-paca.geojson absent (reverse geocoding api-adresse)
 async function _extractLocalitiesFallback(allCoords, onProgress) {
-  const sampled = sampleRoutePoints(allCoords, 250);
+  const sampled = sampleRoutePoints(allCoords, 500);
   const seen    = new Map();
   const results = [];
   for (let i = 0; i < sampled.length; i++) {
@@ -2103,44 +2120,28 @@ function kmlRenderResults(localities, totalKm, terrainCount = 0) {
 // ── Contours communes (geo.api.gouv.fr) ──────────────────────────────────────
 let kmlCommunePolygonLayer = null;
 
-async function kmlFetchAndRenderCommunePolygons(localities) {
-  // Uniquement les communes avec INSEE (meilleure précision)
-  const withInsee = localities.filter(l => l.insee && l.insee.length >= 5);
-  if (!withInsee.length) return;
+function kmlFetchAndRenderCommunePolygons(localities) {
+  // Utilise la géométrie déjà en mémoire — zéro requête réseau
+  const withGeom = localities.filter(l => l.geometry);
+  if (!withGeom.length) return;
 
   if (kmlCommunePolygonLayer) { map.removeLayer(kmlCommunePolygonLayer); kmlCommunePolygonLayer = null; }
   kmlCommunePolygonLayer = L.layerGroup();
   _addLayerIfVisible(kmlCommunePolygonLayer, 'communes');
 
-  // Couleurs pastel cycliques pour différencier les communes
   const PALETTE = ['#60a5fa','#4ade80','#fb923c','#a78bfa','#f472b6','#34d399','#fbbf24'];
 
-  // Deduplicate by INSEE — one HTTP request per unique commune code
-  const byInsee = new Map(); // insee → { representative loc, all sharing locs }
-  withInsee.forEach(loc => {
-    if (!byInsee.has(loc.insee)) byInsee.set(loc.insee, { loc, all: [] });
-    byInsee.get(loc.insee).all.push(loc);
-  });
-
-  await Promise.all([...byInsee.values()].map(async ({ loc, all }, idx) => {
+  withGeom.forEach((loc, idx) => {
     try {
-      const url = `https://geo.api.gouv.fr/communes/${loc.insee}?fields=nom,contour&format=geojson`;
-      const res = await fetch(url);
-      if (!res.ok) return;
-      const data = await res.json();
-      if (!data.geometry) return;
       const color = PALETTE[idx % PALETTE.length];
-      const poly = L.geoJSON(data.geometry, {
-        style: { color, weight: 1, opacity: 0.7, fillColor: color, fillOpacity: 0.12 },
+      const poly  = L.geoJSON(loc.geometry, {
+        style: { color, weight: 1.5, opacity: 0.75, fillColor: color, fillOpacity: 0.13 },
       });
-      const communeName = data.properties?.nom || loc.name;
-      poly.bindPopup(`<b>${escapeHtml(communeName)}</b><br><small>${loc.insee}</small>`);
+      poly.bindPopup(`<b>${escapeHtml(loc.name)}</b><br><small>${loc.insee} · ${loc.dept ? 'Dép. ' + loc.dept : ''}</small>`);
       poly.addTo(kmlCommunePolygonLayer);
-      // Share the same polygon reference with all localities in this commune
-      const layer = poly.getLayers()[0];
-      for (const l of all) l._polygon = layer;
-    } catch(_) { /* silently ignore */ }
-  }));
+      loc._polygon = poly.getLayers()[0];
+    } catch(_) {}
+  });
 }
 
 // ── Wiring UI ─────────────────────────────────────────────────────────────────
@@ -2239,10 +2240,10 @@ async function kmlRunExtraction() {
   _kmlRenderParcelLayer(corridorFeatures);
 
   // ── Étape 2 : communes ────────────────────────────────────────────────────
-  const localityLabels = ['Préparation…', 'Requête OSM…', 'Filtrage…', 'Enrichissement INSEE…'];
+  const localityLabels = ['Chargement communes…', 'Analyse du tracé…', 'Terminé'];
   const localities = await extractLocalities(allCoords, (current, total) => {
-    const label = localityLabels[current - 1] || `Lieux ${current}/${total}`;
-    progressLabel.textContent = `Recherche des lieux — ${label}`;
+    const label = localityLabels[current - 1] || `${current}/${total}`;
+    progressLabel.textContent = `Communes — ${label}`;
     progressBar.style.width   = `${Math.round(20 + current / total * 60)}%`;
   });
 

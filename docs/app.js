@@ -376,7 +376,10 @@ loadCommunesGeo();
       return el;
     },
   });
-  new Ctrl().addTo(map);
+  const layerCtrlInstance = new Ctrl().addTo(map);
+  // Caché au démarrage — visible uniquement une fois un itinéraire chargé
+  layerCtrlInstance.getContainer().style.display = 'none';
+  window._layerCtrlEl = layerCtrlInstance.getContainer();
 })();
 
 // ── Chargement ────────────────────────────────────────────────────────────
@@ -1919,21 +1922,35 @@ function parseGpx(text) {
 
 // ── Merge et ordonnancement multi-fichiers ────────────────────────────────────
 function mergeAndOrderCoords(filesData) {
-  if (filesData.length === 1) return filesData[0].coords;
+  const segments = filesData.map(f => f.coords).filter(c => c.length > 0);
+  if (segments.length === 0) return [];
+  if (segments.length === 1) return segments[0];
 
-  const result = [...filesData[0].coords];
-  for (let i = 1; i < filesData.length; i++) {
-    const next = filesData[i].coords;
-    if (!next.length) continue;
-    const lastPt   = result[result.length - 1];
-    const firstPt  = next[0];
-    const lastPt2  = next[next.length - 1];
-    const dFirst   = haversineMeters(lastPt[0], lastPt[1], firstPt[0], firstPt[1]);
-    const dLast    = haversineMeters(lastPt[0], lastPt[1], lastPt2[0], lastPt2[1]);
-    // Si le dernier point du tronçon est plus proche → inverser
-    const ordered  = dLast < dFirst ? [...next].reverse() : next;
-    result.push(...ordered);
+  // Greedy nearest-neighbor chain : à chaque étape on cherche le segment non visité
+  // dont l'une des extrémités est la plus proche du point courant, puis on l'ajoute
+  // (éventuellement retourné). O(n²) — acceptable pour quelques fichiers KML.
+  const used   = new Array(segments.length).fill(false);
+  const result = [...segments[0]];
+  used[0] = true;
+
+  for (let step = 1; step < segments.length; step++) {
+    const tail = result[result.length - 1];
+    let bestIdx = -1, bestDist = Infinity, bestReverse = false;
+
+    for (let i = 0; i < segments.length; i++) {
+      if (used[i]) continue;
+      const seg = segments[i];
+      const dHead = haversineMeters(tail[0], tail[1], seg[0][0],              seg[0][1]);
+      const dTail = haversineMeters(tail[0], tail[1], seg[seg.length-1][0], seg[seg.length-1][1]);
+      if (dHead < bestDist) { bestDist = dHead; bestIdx = i; bestReverse = false; }
+      if (dTail < bestDist) { bestDist = dTail; bestIdx = i; bestReverse = true;  }
+    }
+
+    used[bestIdx] = true;
+    const seg = segments[bestIdx];
+    result.push(...(bestReverse ? [...seg].reverse() : seg));
   }
+
   return result;
 }
 
@@ -2126,12 +2143,12 @@ function kmlRenderResults(localities, totalKm, terrainCount = 0) {
     item.addEventListener('mouseenter', () => {
       item.classList.add('hover');
       if (loc._marker) loc._marker.openPopup();
-      if (loc._polygon) loc._polygon.setStyle({ fillOpacity: 0.45, weight: 2.5 });
+      if (loc._polygon) loc._polygon.setStyle({ fillOpacity: 0.55, weight: 2.5 });
       map.panTo([loc.lat, loc.lng], { animate: true, duration: 0.4 });
     });
     item.addEventListener('mouseleave', () => {
       item.classList.remove('hover');
-      if (loc._polygon) loc._polygon.setStyle({ fillOpacity: 0.12, weight: 1 });
+      if (loc._polygon) loc._polygon.setStyle({ fillOpacity: 0.30, weight: 2 });
     });
     container.appendChild(item);
   });
@@ -2162,7 +2179,7 @@ function kmlFetchAndRenderCommunePolygons(localities) {
     try {
       const color = PALETTE[idx % PALETTE.length];
       const poly  = L.geoJSON(loc.geometry, {
-        style: { color, weight: 1.5, opacity: 0.75, fillColor: color, fillOpacity: 0.13 },
+        style: { color, weight: 2, opacity: 0.9, fillColor: color, fillOpacity: 0.30 },
       });
       poly.bindPopup(`<b>${escapeHtml(loc.name)}</b><br><small>${loc.insee} · ${loc.dept ? 'Dép. ' + loc.dept : ''}</small>`);
       poly.addTo(kmlCommunePolygonLayer);
@@ -2195,6 +2212,7 @@ async function kmlLoadFile(file) {
   if (!coords.length) { alert(`Aucun tracé trouvé dans ${file.name}`); return; }
   kmlLoadedFiles.push({ name: file.name, coords });
   kmlUpdateFileUI();
+  if (window._layerCtrlEl) window._layerCtrlEl.style.display = '';
 }
 
 function kmlRemoveFile(index) {
@@ -2227,6 +2245,7 @@ function kmlClearAll() {
   if (results)  results.innerHTML      = '';
   if (chips)    chips.innerHTML        = '';
   if (poi)      poi.innerHTML          = '';
+  if (window._layerCtrlEl) window._layerCtrlEl.style.display = 'none';
 }
 
 async function kmlRunExtraction() {
@@ -2445,6 +2464,14 @@ const POI_CATEGORIES = {
  node["shop"="farm"](${bbox});
  node["amenity"="marketplace"](${bbox}););out center;`,
   },
+  lieux: {
+    emoji: '🏘', label: 'Hameaux / Villages', color: '#f9a8d4',
+    query: (bbox) => `[out:json][timeout:30];
+(node["place"="hamlet"](${bbox});
+ node["place"="village"](${bbox});
+ node["place"="locality"](${bbox});
+ node["place"="isolated_dwelling"](${bbox}););out;`,
+  },
 };
 
 function routeBboxWithMargin(coords, marginDeg = 0.025) {
@@ -2610,6 +2637,10 @@ function poiTypeLabel(tags) {
   if (tags.shop === 'butcher')              return 'Boucherie';
   if (tags.shop === 'farm')                 return 'Vente ferme';
   if (tags.amenity === 'marketplace')       return 'March\xe9';
+  if (tags.place === 'hamlet')              return 'Hameau';
+  if (tags.place === 'village')             return 'Village';
+  if (tags.place === 'locality')            return 'Lieu-dit';
+  if (tags.place === 'isolated_dwelling')   return 'Lieu-dit';
   return 'POI';
 }
 
@@ -2618,10 +2649,11 @@ async function fetchAllPoi(coords) {
   const polyline = coords.map(([lng, lat]) => ({ lat, lng }));
   const polyCache = _buildPolylineCache(polyline);
 
-  const [eauRaw, haltesRaw, ravRaw] = await Promise.all([
+  const [eauRaw, haltesRaw, ravRaw, lieuxRaw] = await Promise.all([
     fetchOverpassPoi(POI_CATEGORIES.eau.query(overpassStr)).catch(() => []),
     fetchOverpassPoi(POI_CATEGORIES.haltes.query(overpassStr)).catch(() => []),
     fetchOverpassPoi(POI_CATEGORIES.ravitaillement.query(overpassStr)).catch(() => []),
+    fetchOverpassPoi(POI_CATEGORIES.lieux.query(overpassStr)).catch(() => []),
   ]);
 
   function enrich(list, cat) {
@@ -2641,6 +2673,7 @@ async function fetchAllPoi(coords) {
     eau:            enrich(eauRaw,    'eau'),
     haltes:         enrich(haltesRaw, 'haltes'),
     ravitaillement: enrich(ravRaw,    'ravitaillement'),
+    lieux:          enrich(lieuxRaw,  'lieux'),
   };
 }
 
@@ -2653,6 +2686,7 @@ function kmlRenderPoi(poiData) {
     eau:            { color: '#60a5fa', emoji: '💧' },
     haltes:         { color: '#fb923c', emoji: '🏡' },
     ravitaillement: { color: '#4ade80', emoji: '🛒' },
+    lieux:          { color: '#f9a8d4', emoji: '🏘' },
   };
 
   for (const [cat, list] of Object.entries(poiData)) {
@@ -2692,6 +2726,7 @@ function kmlRenderPoiSidebar(poiData) {
     eau:            { emoji: '💧', label: 'Points d\'eau',      color: '#60a5fa' },
     haltes:         { emoji: '🏡', label: 'Haltes / Partenaires', color: '#fb923c' },
     ravitaillement: { emoji: '🛒', label: 'Ravitaillement',     color: '#4ade80' },
+    lieux:          { emoji: '🏘', label: 'Hameaux / Villages', color: '#f9a8d4' },
   };
 
   const total = Object.values(poiData).reduce((s, arr) => s + arr.length, 0);
@@ -2704,6 +2739,7 @@ function kmlRenderPoiSidebar(poiData) {
 
   for (const [cat, list] of Object.entries(poiData)) {
     const cfg = catConfig[cat];
+    if (!cfg) continue;
     const group = document.createElement('div');
     group.className = 'kml-poi-group';
 

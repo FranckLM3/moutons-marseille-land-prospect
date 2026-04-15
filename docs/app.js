@@ -314,6 +314,53 @@ const satellite = L.tileLayer(
 satellite.addTo(map);
 L.control.layers({ 'Carte': osmLayer, 'Satellite': satellite }, {}, { position: 'bottomright' }).addTo(map);
 
+// ── Contrôle de visibilité des couches ───────────────────────────────────
+(function _initLayerControl() {
+  const LAYERS_CONFIG = [
+    { key: 'terrains',   color: '#fb923c', label: 'Terrains pâturables' },
+    { key: 'route',      color: '#f43f5e', label: 'Itinéraire'          },
+    { key: 'communes',   color: '#60a5fa', label: 'Communes'            },
+    { key: 'poi',        color: '#a78bfa', label: 'Points d\'intérêt'   },
+    { key: 'vegetation', color: '#4ade80', label: 'Végétation OCS GE'   },
+  ];
+
+  const Ctrl = L.Control.extend({
+    options: { position: 'topright' },
+    onAdd() {
+      const el = L.DomUtil.create('div', 'map-layer-control');
+      L.DomEvent.disableClickPropagation(el);
+      L.DomEvent.disableScrollPropagation(el);
+
+      const header = L.DomUtil.create('div', 'mlc-header', el);
+      header.innerHTML = '<span>🗺 Couches</span><span class="mlc-chevron">▾</span>';
+
+      const body = L.DomUtil.create('div', 'mlc-body', el);
+      body.innerHTML = LAYERS_CONFIG.map(({ key, color, label }) => `
+        <label class="layer-toggle-row" title="Afficher/masquer ${label}">
+          <span class="layer-dot" style="background:${color}"></span>
+          <span style="flex:1">${label}</span>
+          <input type="checkbox" class="layer-toggle-cb" data-key="${key}" checked />
+        </label>`).join('');
+
+      // Toggle panel open/close
+      let open = true;
+      header.addEventListener('click', () => {
+        open = !open;
+        body.style.display       = open ? 'block' : 'none';
+        header.querySelector('.mlc-chevron').textContent = open ? '▾' : '▸';
+      });
+
+      // Checkbox listeners
+      body.querySelectorAll('.layer-toggle-cb').forEach(cb => {
+        cb.addEventListener('change', () => toggleMapLayer(cb.dataset.key));
+      });
+
+      return el;
+    },
+  });
+  new Ctrl().addTo(map);
+})();
+
 // ── Chargement ────────────────────────────────────────────────────────────
 // Les données sont servies comme GeoJSON statiques par commune (docs/data/communes/)
 
@@ -598,14 +645,18 @@ function showOcsLayer() {
       pane: 'ocsPane',
     });
   }
+  layerVisible.vegetation = true;
+  const cb = document.querySelector('.layer-toggle-cb[data-key="vegetation"]');
+  if (cb) { cb.checked = true; cb.closest('.layer-toggle-row').style.opacity = '1'; }
   map.addLayer(ocsWmsLayer);
   updateLegendFromWms();
 }
 
 function hideOcsLayer() {
-  if (ocsWmsLayer && map.hasLayer(ocsWmsLayer)) {
-    map.removeLayer(ocsWmsLayer);
-  }
+  layerVisible.vegetation = false;
+  const cb = document.querySelector('.layer-toggle-cb[data-key="vegetation"]');
+  if (cb) { cb.checked = false; cb.closest('.layer-toggle-row').style.opacity = '0.45'; }
+  if (ocsWmsLayer && map.hasLayer(ocsWmsLayer)) map.removeLayer(ocsWmsLayer);
 }
 
 function hasIgnWmtsConfig() {
@@ -667,11 +718,12 @@ function _renderFilters() {
       return { fillColor: color, fillOpacity: 0.45, color: color, weight: 1.2, opacity: 0.8 };
     },
     onEachFeature: (feature, layer) => {
-      layer.bindPopup(() => buildPopup(feature), { maxWidth: 300, minWidth: 260 });
+      layer.bindPopup(() => buildPopup(feature), { maxWidth: 440, minWidth: 340 });
       layer.on('mouseover', function() { this.setStyle({ fillOpacity: 0.7, weight: 2 }); });
       layer.on('mouseout',  function() { currentLayer && currentLayer.resetStyle(this); });
     },
-  }).addTo(map);
+  });
+  _addLayerIfVisible(currentLayer, 'terrains');
 
   if (filtered.length > 0) {
     const activeTab = document.querySelector('.sidebar-tab.active')?.dataset?.tab;
@@ -1389,12 +1441,12 @@ async function computeRoute(keepSelected = false) {
     // Effacer les parcelles du filtre (onglet carte) pour ne garder que l'itinéraire
     if (currentLayer) { map.removeLayer(currentLayer); currentLayer = null; }
 
-    routeLayer = L.geoJSON(routeGeojson, {
-      style: { color: '#4ade80', weight: 4, opacity: 0.85, dashArray: '8 4' }
-    }).addTo(map);
+    routeLayer = _addLayerIfVisible(L.geoJSON(routeGeojson, {
+      style: { color: '#f43f5e', weight: 4, opacity: 0.9, dashArray: '8 4' }
+    }), 'route');
 
     // Parcelles candidates en orange — popup complète + bouton ajouter
-    routeParcelsLayer = L.geoJSON(
+    routeParcelsLayer = _addLayerIfVisible(L.geoJSON(
       { type: 'FeatureCollection', features: displayCandidates.map(p => p.feature) },
       {
         style: { fillColor: '#fb923c', fillOpacity: 0.45, color: '#fb923c', weight: 1.5, opacity: 0.8 },
@@ -1409,12 +1461,12 @@ async function computeRoute(keepSelected = false) {
               </button>
             </div>`;
             return btn + buildPopup(feature);
-          }, { maxWidth: 340, minWidth: 280 });
+          }, { maxWidth: 440, minWidth: 340 });
           layer.on('mouseover', function() { this.setStyle({ fillOpacity: 0.75, weight: 2.5 }); });
           layer.on('mouseout',  function() { routeParcelsLayer && routeParcelsLayer.resetStyle(this); });
         },
       }
-    ).addTo(map);
+    ), 'terrains');
 
     // Parcelles sélectionnées en vert
     if (orderedSelected.length) {
@@ -1424,11 +1476,12 @@ async function computeRoute(keepSelected = false) {
           style: { fillColor: '#4ade80', fillOpacity: 0.7, color: '#fff', weight: 2, opacity: 0.9 },
           onEachFeature: (feature, layer) => {
             layer._routeSelected = true;
-            layer.bindPopup(() => buildPopup(feature), { maxWidth: 300, minWidth: 260 });
+            layer.bindPopup(() => buildPopup(feature), { maxWidth: 440, minWidth: 340 });
             layer.on('mouseover', function() { this.setStyle({ fillOpacity: 0.9, weight: 3 }); });
           },
         }
-      ).addTo(map);
+      );
+      _addLayerIfVisible(selLayer, 'terrains');
       selLayer.eachLayer(l => { l._routeSelected = true; });
     }
 
@@ -1437,17 +1490,18 @@ async function computeRoute(keepSelected = false) {
       html: `<div style="background:${color};color:#111;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;border:2px solid rgba(255,255,255,0.5);box-shadow:0 2px 8px rgba(0,0,0,.6)">${label}</div>`,
       className: '', iconSize: [28,28], iconAnchor: [14,14]
     });
-    routeMarkers.push(L.marker([ptA.lat, ptA.lng], { icon: iconFor('#60a5fa','A') }).addTo(map).bindPopup('Départ'));
+    const _addMarker = (m) => { _addLayerIfVisible(m, 'route'); routeMarkers.push(m); };
+    _addMarker(L.marker([ptA.lat, ptA.lng], { icon: iconFor('#60a5fa','A') }).bindPopup('Départ'));
     fixedWaypoints.forEach((wp, i) => {
-      routeMarkers.push(L.marker([wp.lat, wp.lng], { icon: iconFor('#a78bfa', i+1) }).addTo(map).bindPopup(wp.label.split(',')[0]));
+      _addMarker(L.marker([wp.lat, wp.lng], { icon: iconFor('#a78bfa', i+1) }).bindPopup(wp.label.split(',')[0]));
     });
     orderedSelected.forEach((p, i) => {
-      routeMarkers.push(
+      _addMarker(
         L.marker([p.center.lat, p.center.lng], { icon: iconFor('#4ade80', fixedWaypoints.length + i + 1) })
-          .addTo(map).bindPopup(buildPopup(p.feature), { maxWidth: 300 })
+          .bindPopup(buildPopup(p.feature), { maxWidth: 440 })
       );
     });
-    routeMarkers.push(L.marker([ptB.lat, ptB.lng], { icon: iconFor('#f87171','B') }).addTo(map).bindPopup('Arrivée'));
+    _addMarker(L.marker([ptB.lat, ptB.lng], { icon: iconFor('#f87171','B') }).bindPopup('Arrivée'));
 
     map.fitBounds(routeLayer.getBounds(), { padding: [30, 30] });
 
@@ -1690,6 +1744,54 @@ let kmlAbortFlag     = false;
 // ── Source de l'itinéraire ────────────────────────────────────────────────────
 let routeMode = 'ors'; // 'ors' | 'kml'
 
+// ── Visibilité des couches cartographiques ────────────────────────────────────
+const layerVisible = { terrains: true, route: true, communes: true, poi: true, vegetation: true };
+
+function _getLayerRefs(key) {
+  const refs = [];
+  switch(key) {
+    case 'terrains':
+      if (currentLayer)       refs.push(currentLayer);
+      if (routeParcelsLayer)  refs.push(routeParcelsLayer);
+      if (kmlParcelLayer)     refs.push(kmlParcelLayer);
+      map.eachLayer(l => { if (l._routeSelected) refs.push(l); });
+      break;
+    case 'route':
+      if (routeLayer)     refs.push(routeLayer);
+      if (kmlRouteLayer)  refs.push(kmlRouteLayer);
+      routeMarkers.forEach(m => refs.push(m));
+      break;
+    case 'communes':
+      if (kmlMarkersLayer)        refs.push(kmlMarkersLayer);
+      if (kmlCommunePolygonLayer) refs.push(kmlCommunePolygonLayer);
+      break;
+    case 'poi':
+      if (kmlPoiLayer) refs.push(kmlPoiLayer);
+      break;
+    case 'vegetation':
+      if (ocsWmsLayer) refs.push(ocsWmsLayer);
+      break;
+  }
+  return refs;
+}
+
+function _addLayerIfVisible(layer, key) {
+  if (layerVisible[key] !== false) layer.addTo(map);
+  return layer;
+}
+
+function toggleMapLayer(key) {
+  layerVisible[key] = !layerVisible[key];
+  _getLayerRefs(key).forEach(l => {
+    if (layerVisible[key]) { if (!map.hasLayer(l)) map.addLayer(l); }
+    else                   { if (map.hasLayer(l))  map.removeLayer(l); }
+  });
+  const cb = document.querySelector(`.layer-toggle-cb[data-key="${key}"]`);
+  if (cb) cb.checked = layerVisible[key];
+  const row = cb && cb.closest('.layer-toggle-row');
+  if (row) row.style.opacity = layerVisible[key] ? '1' : '0.45';
+}
+
 function switchRouteMode(mode) {
   if (routeMode === mode) return;
   routeMode = mode;
@@ -1898,7 +2000,8 @@ function kmlRenderResults(localities, totalKm, terrainCount = 0) {
   if (kmlMarkersLayer) { map.removeLayer(kmlMarkersLayer); kmlMarkersLayer = null; }
   if (kmlCommunePolygonLayer) { map.removeLayer(kmlCommunePolygonLayer); kmlCommunePolygonLayer = null; }
   kmlLocalities   = localities;
-  kmlMarkersLayer = L.layerGroup().addTo(map);
+  kmlMarkersLayer = L.layerGroup();
+  _addLayerIfVisible(kmlMarkersLayer, 'communes');
 
   localities.forEach(loc => {
     const marker = L.circleMarker([loc.lat, loc.lng], {
@@ -1967,7 +2070,8 @@ async function kmlFetchAndRenderCommunePolygons(localities) {
   if (!withInsee.length) return;
 
   if (kmlCommunePolygonLayer) { map.removeLayer(kmlCommunePolygonLayer); kmlCommunePolygonLayer = null; }
-  kmlCommunePolygonLayer = L.layerGroup().addTo(map);
+  kmlCommunePolygonLayer = L.layerGroup();
+  _addLayerIfVisible(kmlCommunePolygonLayer, 'communes');
 
   // Couleurs pastel cycliques pour différencier les communes
   const PALETTE = ['#60a5fa','#4ade80','#fb923c','#a78bfa','#f472b6','#34d399','#fbbf24'];
@@ -2058,10 +2162,10 @@ async function kmlRunExtraction() {
 
   // Afficher le tracé sur la carte
   if (kmlRouteLayer) map.removeLayer(kmlRouteLayer);
-  kmlRouteLayer = L.polyline(
+  kmlRouteLayer = _addLayerIfVisible(L.polyline(
     allCoords.map(([lng, lat]) => [lat, lng]),
-    { color: '#4ade80', weight: 3, opacity: 0.7, dashArray: '6 3' }
-  ).addTo(map);
+    { color: '#f43f5e', weight: 4, opacity: 0.9, dashArray: '8 5' }
+  ), 'route');
   map.fitBounds(kmlRouteLayer.getBounds(), { padding: [30, 30] });
 
   const progressWrap  = document.getElementById('kml-progress-wrap');
@@ -2124,17 +2228,17 @@ function _kmlRenderParcelLayer(features) {
   // Masquer les parcelles du filtre pour éviter la pollution visuelle
   if (currentLayer) { map.removeLayer(currentLayer); currentLayer = null; }
   if (!features.length) return;
-  kmlParcelLayer = L.geoJSON(
+  kmlParcelLayer = _addLayerIfVisible(L.geoJSON(
     { type: 'FeatureCollection', features },
     {
       style: { fillColor: '#fb923c', fillOpacity: 0.40, color: '#fb923c', weight: 1.2, opacity: 0.75 },
       onEachFeature: (feature, layer) => {
-        layer.bindPopup(() => buildPopup(feature), { maxWidth: 300, minWidth: 260 });
+        layer.bindPopup(() => buildPopup(feature), { maxWidth: 440, minWidth: 340 });
         layer.on('mouseover', function() { this.setStyle({ fillOpacity: 0.7, weight: 2 }); });
         layer.on('mouseout',  function() { kmlParcelLayer && kmlParcelLayer.resetStyle(this); });
       },
     }
-  ).addTo(map);
+  ), 'terrains');
 }
 
 function kmlCopyList() {
@@ -2394,7 +2498,8 @@ async function fetchAllPoi(coords) {
 
 function kmlRenderPoi(poiData) {
   if (kmlPoiLayer) { map.removeLayer(kmlPoiLayer); kmlPoiLayer = null; }
-  kmlPoiLayer = L.layerGroup().addTo(map);
+  kmlPoiLayer = L.layerGroup();
+  _addLayerIfVisible(kmlPoiLayer, 'poi');
 
   const catConfig = {
     eau:            { color: '#60a5fa', emoji: '💧' },

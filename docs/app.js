@@ -1934,6 +1934,7 @@ function parseGpx(text) {
 function mergeAndOrderCoords(filesData) {
   // Concaténation brute dans l'ordre de chargement — pas de réordonnancement
   return filesData.flatMap(f => f.coords);
+}
 
 // ── Haversine ─────────────────────────────────────────────────────────────────
 function haversineMeters(lng1, lat1, lng2, lat2) {

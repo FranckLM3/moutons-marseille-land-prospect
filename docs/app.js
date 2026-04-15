@@ -2003,39 +2003,39 @@ out body;`;
   const nearby = filterPoiByDistance(elements, polyline, radiusKm);
   onProgress(3, 4);
 
-  // Deduplicate by name (case-insensitive), enrich with INSEE
-  const seen    = new Set();
-  const results = [];
+  // Deduplicate by name (case-insensitive), build candidate list
+  const seen       = new Set();
+  const candidates = [];
   for (const el of nearby) {
-    if (kmlAbortFlag) break;
     const name = el.tags?.name;
     if (!name) continue;
     const key = name.toLowerCase().trim();
     if (seen.has(key)) continue;
     seen.add(key);
-
     const placeType = el.tags?.place || 'locality';
-    // OSM ref:INSEE tag (present on many French nodes) — always the commune INSEE
-    let insee = el.tags?.['ref:INSEE'] || el.tags?.['ref:insee'] || '';
-    let dept  = _parseDept(insee);
+    const insee     = el.tags?.['ref:INSEE'] || el.tags?.['ref:insee'] || '';
+    candidates.push({ name, insee, placeType, lat: el.lat, lng: el.lng, distKm: el.distKm });
+  }
 
-    // If no INSEE from OSM, ask api-adresse (returns commune citycode even for hamlets)
+  // Parallel INSEE enrichment — only for entries without OSM ref:INSEE
+  // (api-adresse handles concurrent requests; no artificial delay needed)
+  onProgress(4, 4);
+  const results = await Promise.all(candidates.map(async c => {
+    let { insee } = c;
+    let dept = _parseDept(insee);
     if (!insee) {
       try {
-        const res = await fetch(`https://api-adresse.data.gouv.fr/reverse/?lon=${el.lng}&lat=${el.lat}&limit=1`);
+        const res = await fetch(`https://api-adresse.data.gouv.fr/reverse/?lon=${c.lng}&lat=${c.lat}&limit=1`);
         if (res.ok) {
           const json = await res.json();
           const p    = json.features?.[0]?.properties;
           if (p) { insee = p.citycode || ''; dept = _parseDept(p.postcode || insee); }
         }
       } catch(_) {}
-      await new Promise(r => setTimeout(r, 80));
     }
+    return { name: c.name, insee, dept, type: c.placeType, lat: c.lat, lng: c.lng, distKm: c.distKm };
+  }));
 
-    results.push({ name, insee, dept, type: placeType, lat: el.lat, lng: el.lng, distKm: el.distKm });
-  }
-
-  onProgress(4, 4);
   return results;
 }
 
@@ -2139,7 +2139,14 @@ async function kmlFetchAndRenderCommunePolygons(localities) {
   // Couleurs pastel cycliques pour différencier les communes
   const PALETTE = ['#60a5fa','#4ade80','#fb923c','#a78bfa','#f472b6','#34d399','#fbbf24'];
 
-  await Promise.all(withInsee.map(async (loc, idx) => {
+  // Deduplicate by INSEE — one HTTP request per unique commune code
+  const byInsee = new Map(); // insee → { representative loc, all sharing locs }
+  withInsee.forEach(loc => {
+    if (!byInsee.has(loc.insee)) byInsee.set(loc.insee, { loc, all: [] });
+    byInsee.get(loc.insee).all.push(loc);
+  });
+
+  await Promise.all([...byInsee.values()].map(async ({ loc, all }, idx) => {
     try {
       const url = `https://geo.api.gouv.fr/communes/${loc.insee}?fields=nom,contour&format=geojson`;
       const res = await fetch(url);
@@ -2150,10 +2157,12 @@ async function kmlFetchAndRenderCommunePolygons(localities) {
       const poly = L.geoJSON(data.geometry, {
         style: { color, weight: 1, opacity: 0.7, fillColor: color, fillOpacity: 0.12 },
       });
-      poly.bindPopup(`<b>${escapeHtml(loc.name)}</b><br><small>${loc.insee}</small>`);
+      const communeName = data.properties?.nom || loc.name;
+      poly.bindPopup(`<b>${escapeHtml(communeName)}</b><br><small>${loc.insee}</small>`);
       poly.addTo(kmlCommunePolygonLayer);
-      // Associer le polygon à la localité pour interaction sidebar
-      loc._polygon = poly.getLayers()[0];
+      // Share the same polygon reference with all localities in this commune
+      const layer = poly.getLayers()[0];
+      for (const l of all) l._polygon = layer;
     } catch(_) { /* silently ignore */ }
   }));
 }
@@ -2471,18 +2480,37 @@ function filterPoiByDistance(poiList, polyline, maxKm = 2.0) {
     polyline.map(p => [p.lng, p.lat]), 60
   ).map(([lng, lat]) => ({ lat, lng }));
 
+  // Pre-compute segment lengths once — reused by projectionOnPolyline sort below
+  const segLengths = [];
+  let totalLen = 0;
+  for (let i = 0; i < simplPoly.length - 1; i++) {
+    const l = haversine(simplPoly[i], simplPoly[i + 1]);
+    segLengths.push(l);
+    totalLen += l;
+  }
+
+  // Inline projection using cached lengths — avoids O(n) haversine loop per POI
+  function projFast(p) {
+    let bestT = 0, bestSeg = 0, bestDist = Infinity;
+    for (let i = 0; i < simplPoly.length - 1; i++) {
+      const t    = projectionOnSegment(p, simplPoly[i], simplPoly[i + 1]);
+      const proj = { lat: simplPoly[i].lat + t*(simplPoly[i+1].lat - simplPoly[i].lat),
+                     lng: simplPoly[i].lng + t*(simplPoly[i+1].lng - simplPoly[i].lng) };
+      const d    = haversine(p, proj);
+      if (d < bestDist) { bestDist = d; bestSeg = i; bestT = t; }
+    }
+    let cum = 0;
+    for (let i = 0; i < bestSeg; i++) cum += segLengths[i];
+    return totalLen > 0 ? (cum + bestT * segLengths[bestSeg]) / totalLen : 0;
+  }
+
   return poiList
     .map(poi => {
       const dist = distToPolyline({ lat: poi.lat, lng: poi.lng }, simplPoly);
       return { ...poi, distKm: Math.round(dist * 10) / 10 };
     })
     .filter(poi => poi.distKm <= maxKm)
-    .sort((a, b) => {
-      // Trier par position le long du tracé
-      const pA = projectionOnPolyline({ lat: a.lat, lng: a.lng }, simplPoly);
-      const pB = projectionOnPolyline({ lat: b.lat, lng: b.lng }, simplPoly);
-      return pA - pB;
-    });
+    .sort((a, b) => projFast({ lat: a.lat, lng: a.lng }) - projFast({ lat: b.lat, lng: b.lng }));
 }
 
 function poiDisplayName(tags) {

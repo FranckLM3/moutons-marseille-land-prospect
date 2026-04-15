@@ -245,62 +245,170 @@
 
         <hr class="sidebar-divider" style="margin-top:0" />
 
-        <!-- Guide d'utilisation -->
-        <div class="route-guide">
-          <ol>
-            <li><strong>Saisissez</strong> un point de départ et d'arrivée</li>
-            <li><strong>Cliquez</strong> sur Calculer</li>
-            <li><strong>Cliquez</strong> sur les terrains oranges pour les ajouter</li>
-            <li><strong>Recalculez</strong> pour mettre à jour l'itinéraire</li>
-          </ol>
+        <!-- Sélecteur de source -->
+        <div class="route-source-toggle">
+          <button class="route-mode-btn active" data-mode="ors" onclick="switchRouteMode('ors')">🧭 Calculer</button>
+          <button class="route-mode-btn" data-mode="kml" onclick="switchRouteMode('kml')">📂 Charger un tracé</button>
         </div>
 
-        <h2>Départ / Arrivée</h2>
+        <!-- ── Mode calcul ORS ── -->
+        <div id="route-ors-section">
 
-        <label class="filter-section" style="display:block">
-          <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--blue);display:block;margin-bottom:4px">Départ</span>
-          <input class="route-input" id="route-start" placeholder="Ex : 13 rue de la Paix, Marseille" />
-          <div class="route-status" id="status-start"></div>
-        </label>
-
-        <div id="waypoints-list"></div>
-
-        <div style="margin-bottom:8px">
-          <button class="btn btn-ghost" onclick="addWaypointField()" style="width:100%;font-size:11px;padding:5px">＋ Ajouter une étape fixe</button>
-        </div>
-
-        <label class="filter-section" style="display:block">
-          <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--red);display:block;margin-bottom:4px">Arrivée</span>
-          <input class="route-input" id="route-end" placeholder="Ex : Col de la Gineste, Marseille" />
-          <div class="route-status" id="status-end"></div>
-        </label>
-
-        <hr class="sidebar-divider" />
-        <h2>Critères des parcelles</h2>
-
-        <div class="filter-section">
-          <label>Prairie minimum <span id="rte-area-val" style="color:#4ade80">2 000 m²</span></label>
-          <div class="slider-row">
-            <input type="range" id="rte-area" min="0" max="20000" value="2000" step="500"
-              oninput="document.getElementById('rte-area-val').textContent=Number(this.value).toLocaleString('fr')+' m²'" />
+          <div class="route-guide">
+            <ol>
+              <li><strong>Saisissez</strong> un point de départ et d'arrivée</li>
+              <li><strong>Cliquez</strong> sur Calculer</li>
+              <li><strong>Cliquez</strong> sur les terrains oranges pour les ajouter</li>
+              <li><strong>Recalculez</strong> pour mettre à jour l'itinéraire</li>
+            </ol>
           </div>
-        </div>
 
-        <div class="filter-section">
-          <label>Rayon autour du trajet <span id="rte-radius-val" style="color:#4ade80">2 km</span></label>
-          <div class="slider-row">
-            <input type="range" id="rte-radius" min="1" max="5" value="2" step="1"
-              oninput="document.getElementById('rte-radius-val').textContent=this.value+' km'" />
+          <h2>Départ / Arrivée</h2>
+
+          <label class="filter-section" style="display:block">
+            <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--blue);display:block;margin-bottom:4px">Départ</span>
+            <input class="route-input" id="route-start" placeholder="Ex : 13 rue de la Paix, Marseille" />
+            <div class="route-status" id="status-start"></div>
+          </label>
+
+          <div id="waypoints-list"></div>
+
+          <div style="margin-bottom:8px">
+            <button class="btn btn-ghost" onclick="addWaypointField()" style="width:100%;font-size:11px;padding:5px">＋ Ajouter une étape fixe</button>
           </div>
-        </div>
 
-        <div class="btn-row" style="margin-top:8px">
-          <button class="btn btn-primary" onclick="computeRoute()" id="btn-route">Calculer l'itinéraire</button>
-          <button class="btn btn-ghost"   onclick="clearRoute()">Effacer</button>
-        </div>
+          <label class="filter-section" style="display:block">
+            <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--red);display:block;margin-bottom:4px">Arrivée</span>
+            <input class="route-input" id="route-end" placeholder="Ex : Col de la Gineste, Marseille" />
+            <div class="route-status" id="status-end"></div>
+          </label>
 
-        <div class="route-status" id="status-route" style="margin-top:8px"></div>
-        <div id="route-result"></div>
+          <hr class="sidebar-divider" />
+          <h2>Critères des parcelles</h2>
+
+          <div class="filter-section">
+            <label>Prairie minimum <span id="rte-area-val" style="color:#4ade80">2 000 m²</span></label>
+            <div class="slider-row">
+              <input type="range" id="rte-area" min="0" max="20000" value="2000" step="500"
+                oninput="document.getElementById('rte-area-val').textContent=Number(this.value).toLocaleString('fr')+' m²'" />
+            </div>
+          </div>
+
+          <div class="filter-section">
+            <label>Rayon autour du trajet <span id="rte-radius-val" style="color:#4ade80">2 km</span></label>
+            <div class="slider-row">
+              <input type="range" id="rte-radius" min="1" max="5" value="2" step="1"
+                oninput="document.getElementById('rte-radius-val').textContent=this.value+' km'" />
+            </div>
+          </div>
+
+          <div class="btn-row" style="margin-top:8px">
+            <button class="btn btn-primary" onclick="computeRoute()" id="btn-route">Calculer l'itinéraire</button>
+            <button class="btn btn-ghost"   onclick="clearRoute()">Effacer</button>
+          </div>
+
+          <div class="route-status" id="status-route" style="margin-top:8px"></div>
+          <div id="route-result"></div>
+
+        </div><!-- /route-ors-section -->
+
+        <!-- ── Mode chargement KML/GPX ── -->
+        <div id="route-kml-section" style="display:none">
+
+          <div class="route-guide">
+            <ol>
+              <li><strong>Déposez</strong> un ou plusieurs fichiers KML ou GPX</li>
+              <li>Les tracés sont <strong>fusionnés</strong> en un seul itinéraire</li>
+              <li>Terrains, communes et points d'intérêt sont <strong>extraits automatiquement</strong></li>
+              <li><strong>Exportez</strong> en CSV ou copiez la liste</li>
+            </ol>
+          </div>
+
+          <h2>Fichiers de tracé</h2>
+
+          <div class="kml-drop-zone" id="kml-drop-zone">
+            <div class="kml-drop-icon">🐑</div>
+            <div class="kml-drop-label">Déposer des fichiers KML ou GPX</div>
+            <div class="kml-drop-sub">Plusieurs fichiers acceptés — tracés fusionnés</div>
+            <input type="file" id="kml-file-input" accept=".kml,.gpx" multiple
+                   style="display:none" />
+            <button class="btn btn-ghost" style="margin-top:10px;font-size:11px"
+                    onclick="document.getElementById('kml-file-input').click()">
+              Parcourir…
+            </button>
+          </div>
+
+          <div id="kml-file-list" style="display:none">
+            <h2>Fichiers chargés</h2>
+            <div id="kml-file-chips"></div>
+            <button class="btn btn-ghost" style="width:100%;font-size:11px;margin-top:6px"
+                    onclick="kmlClearAll()">✕ Tout effacer</button>
+          </div>
+
+          <div class="filter-section" style="margin-top:10px">
+            <label>Prairie minimum <span id="kml-area-val" style="color:#4ade80">2 000 m²</span></label>
+            <div class="slider-row">
+              <input type="range" id="kml-area" min="0" max="20000" value="2000" step="500"
+                oninput="document.getElementById('kml-area-val').textContent=Number(this.value).toLocaleString('fr')+' m²'" />
+            </div>
+          </div>
+
+          <div class="filter-section">
+            <label>Rayon autour du trajet <span id="kml-radius-val" style="color:#4ade80">2 km</span></label>
+            <div class="slider-row">
+              <input type="range" id="kml-radius" min="1" max="5" value="2" step="1"
+                oninput="document.getElementById('kml-radius-val').textContent=this.value+' km'" />
+            </div>
+          </div>
+
+          <button class="btn btn-primary" id="kml-run-btn" style="width:100%;margin-top:10px;display:none"
+                  onclick="kmlRunExtraction()">
+            ▶ Analyser le tracé
+          </button>
+
+          <div id="kml-progress-wrap" style="display:none">
+            <div class="kml-progress-label" id="kml-progress-label">Préparation…</div>
+            <div class="kml-progress-bar-wrap">
+              <div class="kml-progress-bar" id="kml-progress-bar" style="width:0%"></div>
+            </div>
+          </div>
+
+          <!-- Résultats -->
+          <div id="kml-stats" style="display:none">
+            <div class="brand-stats" style="margin:10px 0">
+              <div class="stat">
+                <div class="value" id="kml-stat-terrains">—</div>
+                <div class="label">terrains</div>
+              </div>
+              <div class="stat-sep"></div>
+              <div class="stat">
+                <div class="value" id="kml-stat-communes">—</div>
+                <div class="label">communes</div>
+              </div>
+              <div class="stat-sep"></div>
+              <div class="stat">
+                <div class="value" id="kml-stat-poi">—</div>
+                <div class="label">POI</div>
+              </div>
+              <div class="stat-sep"></div>
+              <div class="stat">
+                <div class="value" id="kml-stat-km">—</div>
+                <div class="label">km</div>
+              </div>
+            </div>
+            <div style="display:flex;gap:6px;margin-bottom:10px">
+              <button class="btn btn-ghost" style="flex:1;font-size:11px"
+                      onclick="kmlCopyList()">📋 Copier</button>
+              <button class="btn btn-ghost" style="flex:1;font-size:11px"
+                      onclick="kmlExportCsv()">⬇ CSV</button>
+            </div>
+          </div>
+
+          <div id="kml-results"></div>
+          <div id="kml-poi-section"></div>
+
+        </div><!-- /route-kml-section -->
+
       </div>
 
     </div><!-- /pane-route -->

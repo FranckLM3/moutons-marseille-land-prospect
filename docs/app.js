@@ -1652,11 +1652,31 @@ function exportExcel() {
 // ══════════════════════════════════════════════════════════════════════════════
 
 // ── État global ───────────────────────────────────────────────────────────────
-let kmlLoadedFiles  = [];   // [{ name, coords: [[lng,lat],...] }]
-let kmlLocalities   = [];   // résultat final
-let kmlMarkersLayer = null; // LayerGroup Leaflet pour les marqueurs
-let kmlRouteLayer   = null; // Polyline de prévisualisation du tracé fusionné
-let kmlAbortFlag    = false;
+let kmlLoadedFiles   = [];   // [{ name, coords: [[lng,lat],...] }]
+let kmlLocalities    = [];   // résultat final
+let kmlPoiData       = null; // { eau: [...], haltes: [...], ravitaillement: [...] }
+let kmlMarkersLayer  = null; // LayerGroup Leaflet pour les marqueurs communes
+let kmlRouteLayer    = null; // Polyline de prévisualisation du tracé fusionné
+let kmlPoiLayer      = null; // LayerGroup Leaflet pour les marqueurs POI
+let kmlParcelLayer   = null; // Parcelles corridor KML
+let kmlAbortFlag     = false;
+
+// ── Source de l'itinéraire ────────────────────────────────────────────────────
+let routeMode = 'ors'; // 'ors' | 'kml'
+
+function switchRouteMode(mode) {
+  if (routeMode === mode) return;
+  routeMode = mode;
+  document.querySelectorAll('.route-mode-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.mode === mode);
+  });
+  document.getElementById('route-ors-section').style.display = mode === 'ors' ? '' : 'none';
+  document.getElementById('route-kml-section').style.display = mode === 'kml' ? '' : 'none';
+  // Masquer les parcelles du filtre quand on entre dans le mode itinéraire
+  if (mode === 'kml' && currentLayer) {
+    map.removeLayer(currentLayer); currentLayer = null;
+  }
+}
 
 // ── Parsing KML ───────────────────────────────────────────────────────────────
 function parseKml(text) {
@@ -1848,32 +1868,40 @@ async function extractLocalities(allCoords, onProgress) {
 }
 
 // ── Rendu résultats ───────────────────────────────────────────────────────────
-function kmlRenderResults(localities, totalKm) {
+function kmlRenderResults(localities, totalKm, terrainCount = 0) {
   if (kmlMarkersLayer) { map.removeLayer(kmlMarkersLayer); kmlMarkersLayer = null; }
+  if (kmlCommunePolygonLayer) { map.removeLayer(kmlCommunePolygonLayer); kmlCommunePolygonLayer = null; }
   kmlLocalities   = localities;
   kmlMarkersLayer = L.layerGroup().addTo(map);
 
   localities.forEach(loc => {
     const marker = L.circleMarker([loc.lat, loc.lng], {
-      radius: 6, color: '#4ade80', fillColor: '#4ade80',
+      radius: 5, color: '#4ade80', fillColor: '#4ade80',
       fillOpacity: 0.85, weight: 2,
     }).bindPopup(`<b>${loc.name}</b><br><small>${loc.insee || ''} · ${loc.dept || ''}</small>`);
     kmlMarkersLayer.addLayer(marker);
     loc._marker = marker;
   });
 
+  // Stat update
   const communes = localities.filter(l => l.type === 'municipality' || l.type === 'commune').length;
-  document.getElementById('kml-stat-communes').textContent = communes || localities.length;
-  document.getElementById('kml-stat-lieux').textContent    = localities.length;
-  document.getElementById('kml-stat-km').textContent       = totalKm;
-  document.getElementById('kml-stats').style.display       = 'block';
+  const communesEl  = document.getElementById('kml-stat-communes');
+  const terrainsEl  = document.getElementById('kml-stat-terrains');
+  const kmEl        = document.getElementById('kml-stat-km');
+  const statsEl     = document.getElementById('kml-stats');
+  if (communesEl)  communesEl.textContent = communes || localities.length;
+  if (terrainsEl)  terrainsEl.textContent = terrainCount;
+  if (kmEl)        kmEl.textContent       = totalKm;
+  if (statsEl)     statsEl.style.display  = 'block';
 
+  // Liste sidebar
   const container = document.getElementById('kml-results');
-  container.innerHTML = '';
+  if (!container) return;
+  container.innerHTML = '<h2 style="margin-bottom:6px">Communes du trajet</h2>';
   localities.forEach((loc, i) => {
     const item = document.createElement('div');
     item.className = 'kml-locality-item';
-    item.style.animationDelay = `${i * 35}ms`;
+    item.style.animationDelay = `${i * 30}ms`;
     item.innerHTML = `
       <div class="kml-locality-main">
         <span class="kml-locality-name">${escapeHtml(loc.name)}</span>
@@ -1886,15 +1914,55 @@ function kmlRenderResults(localities, totalKm) {
     item.addEventListener('mouseenter', () => {
       item.classList.add('hover');
       if (loc._marker) loc._marker.openPopup();
+      if (loc._polygon) loc._polygon.setStyle({ fillOpacity: 0.45, weight: 2.5 });
       map.panTo([loc.lat, loc.lng], { animate: true, duration: 0.4 });
     });
-    item.addEventListener('mouseleave', () => item.classList.remove('hover'));
+    item.addEventListener('mouseleave', () => {
+      item.classList.remove('hover');
+      if (loc._polygon) loc._polygon.setStyle({ fillOpacity: 0.12, weight: 1 });
+    });
     container.appendChild(item);
   });
+
+  // Fetch commune boundaries from geo.api.gouv.fr and display on map
+  kmlFetchAndRenderCommunePolygons(localities);
 
   if (kmlRouteLayer) {
     try { map.fitBounds(kmlRouteLayer.getBounds(), { padding: [30, 30] }); } catch(_) {}
   }
+}
+
+// ── Contours communes (geo.api.gouv.fr) ──────────────────────────────────────
+let kmlCommunePolygonLayer = null;
+
+async function kmlFetchAndRenderCommunePolygons(localities) {
+  // Uniquement les communes avec INSEE (meilleure précision)
+  const withInsee = localities.filter(l => l.insee && l.insee.length >= 5);
+  if (!withInsee.length) return;
+
+  if (kmlCommunePolygonLayer) { map.removeLayer(kmlCommunePolygonLayer); kmlCommunePolygonLayer = null; }
+  kmlCommunePolygonLayer = L.layerGroup().addTo(map);
+
+  // Couleurs pastel cycliques pour différencier les communes
+  const PALETTE = ['#60a5fa','#4ade80','#fb923c','#a78bfa','#f472b6','#34d399','#fbbf24'];
+
+  await Promise.all(withInsee.map(async (loc, idx) => {
+    try {
+      const url = `https://geo.api.gouv.fr/communes/${loc.insee}?fields=nom,contour&format=geojson`;
+      const res = await fetch(url);
+      if (!res.ok) return;
+      const data = await res.json();
+      if (!data.geometry) return;
+      const color = PALETTE[idx % PALETTE.length];
+      const poly = L.geoJSON(data.geometry, {
+        style: { color, weight: 1, opacity: 0.7, fillColor: color, fillOpacity: 0.12 },
+      });
+      poly.bindPopup(`<b>${escapeHtml(loc.name)}</b><br><small>${loc.insee}</small>`);
+      poly.addTo(kmlCommunePolygonLayer);
+      // Associer le polygon à la localité pour interaction sidebar
+      loc._polygon = poly.getLayers()[0];
+    } catch(_) { /* silently ignore */ }
+  }));
 }
 
 // ── Wiring UI ─────────────────────────────────────────────────────────────────
@@ -1932,15 +2000,27 @@ function kmlRemoveFile(index) {
 function kmlClearAll() {
   kmlLoadedFiles = [];
   kmlLocalities  = [];
+  kmlPoiData     = null;
   kmlAbortFlag   = true;
-  if (kmlMarkersLayer) { map.removeLayer(kmlMarkersLayer); kmlMarkersLayer = null; }
-  if (kmlRouteLayer)   { map.removeLayer(kmlRouteLayer);   kmlRouteLayer   = null; }
-  document.getElementById('kml-file-list').style.display     = 'none';
-  document.getElementById('kml-run-btn').style.display       = 'none';
-  document.getElementById('kml-progress-wrap').style.display = 'none';
-  document.getElementById('kml-stats').style.display         = 'none';
-  document.getElementById('kml-results').innerHTML           = '';
-  document.getElementById('kml-file-chips').innerHTML        = '';
+  if (kmlMarkersLayer)       { map.removeLayer(kmlMarkersLayer);       kmlMarkersLayer = null; }
+  if (kmlRouteLayer)         { map.removeLayer(kmlRouteLayer);         kmlRouteLayer   = null; }
+  if (kmlPoiLayer)           { map.removeLayer(kmlPoiLayer);           kmlPoiLayer     = null; }
+  if (kmlParcelLayer)        { map.removeLayer(kmlParcelLayer);        kmlParcelLayer  = null; }
+  if (kmlCommunePolygonLayer){ map.removeLayer(kmlCommunePolygonLayer);kmlCommunePolygonLayer = null; }
+  const fileList = document.getElementById('kml-file-list');
+  const runBtn   = document.getElementById('kml-run-btn');
+  const progress = document.getElementById('kml-progress-wrap');
+  const stats    = document.getElementById('kml-stats');
+  const results  = document.getElementById('kml-results');
+  const chips    = document.getElementById('kml-file-chips');
+  const poi      = document.getElementById('kml-poi-section');
+  if (fileList) fileList.style.display = 'none';
+  if (runBtn)   runBtn.style.display   = 'none';
+  if (progress) progress.style.display = 'none';
+  if (stats)    stats.style.display    = 'none';
+  if (results)  results.innerHTML      = '';
+  if (chips)    chips.innerHTML        = '';
+  if (poi)      poi.innerHTML          = '';
 }
 
 async function kmlRunExtraction() {
@@ -1950,6 +2030,7 @@ async function kmlRunExtraction() {
   const allCoords = mergeAndOrderCoords(kmlLoadedFiles);
   const totalKm   = totalRouteKm(allCoords);
 
+  // Afficher le tracé sur la carte
   if (kmlRouteLayer) map.removeLayer(kmlRouteLayer);
   kmlRouteLayer = L.polyline(
     allCoords.map(([lng, lat]) => [lat, lng]),
@@ -1963,21 +2044,71 @@ async function kmlRunExtraction() {
   const runBtn        = document.getElementById('kml-run-btn');
   progressWrap.style.display = 'block';
   runBtn.disabled            = true;
-  runBtn.textContent         = '⏳ Extraction…';
+  runBtn.textContent         = '⏳ Analyse…';
   document.getElementById('kml-results').innerHTML    = '';
   document.getElementById('kml-stats').style.display  = 'none';
+  const poiSection = document.getElementById('kml-poi-section');
+  if (poiSection) poiSection.innerHTML = '';
 
+  const radiusKm = parseFloat(document.getElementById('kml-radius')?.value || '2') || 2;
+  const minArea  = parseInt(document.getElementById('kml-area')?.value    || '2000') || 2000;
+
+  // ── Étape 1 : terrains ────────────────────────────────────────────────────
+  progressLabel.textContent = 'Recherche des terrains…';
+  progressBar.style.width   = '5%';
+
+  const corridorFeatures = await _findCorridorInMemory(allCoords, radiusKm, minArea);
+  _kmlRenderParcelLayer(corridorFeatures);
+
+  // ── Étape 2 : communes ────────────────────────────────────────────────────
   const localities = await extractLocalities(allCoords, (current, total) => {
-    progressLabel.textContent = `Interrogation des communes… ${current} / ${total} points`;
-    progressBar.style.width   = `${Math.round(current / total * 100)}%`;
+    progressLabel.textContent = `Extraction des communes… ${current} / ${total} points`;
+    progressBar.style.width   = `${Math.round(20 + current / total * 60)}%`;
   });
 
-  progressWrap.style.display = 'none';
-  runBtn.disabled            = false;
-  runBtn.textContent         = '▶ Extraire les communes';
+  if (localities.length) kmlRenderResults(localities, totalKm, corridorFeatures.length);
 
-  if (localities.length) kmlRenderResults(localities, totalKm);
-  else alert('Aucune commune trouvée. Vérifiez que vos fichiers contiennent des tracés linéaires.');
+  // ── Étape 3 : POI Overpass ────────────────────────────────────────────────
+  progressLabel.textContent = 'Recherche des points d\'intérêt…';
+  progressBar.style.width   = '85%';
+
+  try {
+    kmlPoiData = await fetchAllPoi(allCoords);
+    kmlRenderPoi(kmlPoiData);
+    kmlRenderPoiSidebar(kmlPoiData);
+    const poiTotal = Object.values(kmlPoiData).reduce((s, arr) => s + arr.length, 0);
+    const poiEl = document.getElementById('kml-stat-poi');
+    if (poiEl) poiEl.textContent = poiTotal;
+  } catch(e) {
+    console.warn('[kml] POI fetch failed:', e);
+    if (poiSection) poiSection.innerHTML =
+      '<div style="font-size:11px;color:var(--text-lo);text-align:center;padding:8px">Points d\'intérêt indisponibles (Overpass)</div>';
+  }
+
+  progressBar.style.width   = '100%';
+  setTimeout(() => { progressWrap.style.display = 'none'; }, 400);
+  runBtn.disabled   = false;
+  runBtn.textContent = '↺ Relancer l\'analyse';
+
+  if (!localities.length) alert('Aucune commune trouvée. Vérifiez que vos fichiers contiennent des tracés linéaires.');
+}
+
+function _kmlRenderParcelLayer(features) {
+  if (kmlParcelLayer) { map.removeLayer(kmlParcelLayer); kmlParcelLayer = null; }
+  // Masquer les parcelles du filtre pour éviter la pollution visuelle
+  if (currentLayer) { map.removeLayer(currentLayer); currentLayer = null; }
+  if (!features.length) return;
+  kmlParcelLayer = L.geoJSON(
+    { type: 'FeatureCollection', features },
+    {
+      style: { fillColor: '#fb923c', fillOpacity: 0.40, color: '#fb923c', weight: 1.2, opacity: 0.75 },
+      onEachFeature: (feature, layer) => {
+        layer.bindPopup(() => buildPopup(feature), { maxWidth: 300, minWidth: 260 });
+        layer.on('mouseover', function() { this.setStyle({ fillOpacity: 0.7, weight: 2 }); });
+        layer.on('mouseout',  function() { kmlParcelLayer && kmlParcelLayer.resetStyle(this); });
+      },
+    }
+  ).addTo(map);
 }
 
 function kmlCopyList() {
@@ -1988,20 +2119,307 @@ function kmlCopyList() {
 }
 
 function kmlExportCsv() {
-  if (!kmlLocalities.length) return;
-  const header = 'nom,code_insee,departement,type,lat,lng';
-  const rows   = kmlLocalities.map(l =>
-    [l.name, l.insee || '', l.dept || '', l.type || '', l.lat, l.lng]
-      .map(v => `"${String(v).replace(/"/g, '""')}"`)
-      .join(',')
-  );
+  if (!kmlLocalities.length && !kmlPoiData) return;
+  const header = 'type_donnee,nom,code_insee,departement,type_lieu,lat,lng,dist_km_trace,tags_osm';
+  const rows   = [];
+
+  // Communes
+  for (const l of kmlLocalities) {
+    rows.push([
+      'commune', l.name, l.insee || '', l.dept || '', l.type || 'commune',
+      l.lat, l.lng, '', ''
+    ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(','));
+  }
+
+  // POI
+  if (kmlPoiData) {
+    for (const [cat, list] of Object.entries(kmlPoiData)) {
+      for (const p of list) {
+        const tagsStr = Object.entries(p.tags || {}).map(([k,v]) => `${k}=${v}`).join(' ');
+        rows.push([
+          'poi_' + cat, p.name, '', '', p.typeLabel,
+          p.lat, p.lng, p.distKm, tagsStr
+        ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(','));
+      }
+    }
+  }
+
   const blob = new Blob([[header, ...rows].join('\n')], { type: 'text/csv;charset=utf-8;' });
   const url  = URL.createObjectURL(blob);
   const a    = Object.assign(document.createElement('a'), {
-    href: url, download: 'communes-transhumance.csv',
+    href: url, download: 'transhumance-communes-poi.csv',
   });
   document.body.appendChild(a); a.click();
   document.body.removeChild(a); URL.revokeObjectURL(url);
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Feature POI — Points d'intérêt à 2 km du tracé (Overpass API)
+// ══════════════════════════════════════════════════════════════════════════════
+
+const POI_CATEGORIES = {
+  eau: {
+    emoji: '💧', label: 'Points d\'eau', color: '#60a5fa',
+    query: (bbox) => `[out:json][timeout:30];
+(node["natural"="spring"](${bbox});
+ node["amenity"="drinking_water"](${bbox});
+ node["amenity"="watering_place"](${bbox});
+ node["natural"="water"](${bbox});
+ way["natural"="water"](${bbox}););out center;`,
+  },
+  haltes: {
+    emoji: '🏡', label: 'Haltes / Partenaires', color: '#fb923c',
+    query: (bbox) => `[out:json][timeout:30];
+(node["tourism"="farm"](${bbox});
+ node["tourism"="guest_house"](${bbox});
+ node["tourism"="hostel"](${bbox});
+ node["tourism"="camp_site"](${bbox});
+ node["tourism"="caravan_site"](${bbox});
+ node["tourism"="picnic_site"](${bbox});
+ node["amenity"="shelter"](${bbox});
+ node["landuse"="farmyard"](${bbox}););out center;`,
+  },
+  ravitaillement: {
+    emoji: '🛒', label: 'Ravitaillement', color: '#4ade80',
+    query: (bbox) => `[out:json][timeout:30];
+(node["shop"="supermarket"](${bbox});
+ node["shop"="convenience"](${bbox});
+ node["shop"="greengrocer"](${bbox});
+ node["shop"="bakery"](${bbox});
+ node["shop"="butcher"](${bbox});
+ node["shop"="farm"](${bbox});
+ node["amenity"="marketplace"](${bbox}););out center;`,
+  },
+};
+
+function routeBboxWithMargin(coords, marginDeg = 0.025) {
+  let minLat = Infinity, minLng = Infinity, maxLat = -Infinity, maxLng = -Infinity;
+  for (const [lng, lat] of coords) {
+    if (lat < minLat) minLat = lat;
+    if (lng < minLng) minLng = lng;
+    if (lat > maxLat) maxLat = lat;
+    if (lng > maxLng) maxLng = lng;
+  }
+  return {
+    minLat: minLat - marginDeg, minLng: minLng - marginDeg,
+    maxLat: maxLat + marginDeg, maxLng: maxLng + marginDeg,
+    overpassStr: `${(minLat - marginDeg).toFixed(6)},${(minLng - marginDeg).toFixed(6)},${(maxLat + marginDeg).toFixed(6)},${(maxLng + marginDeg).toFixed(6)}`,
+  };
+}
+
+async function fetchOverpassPoi(overpassQuery) {
+  const body = 'data=' + encodeURIComponent(overpassQuery);
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const res = await fetch('https://overpass-api.de/api/interpreter', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body,
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      return (json.elements || []).map(el => ({
+        id:   el.id,
+        lat:  el.lat  ?? el.center?.lat,
+        lng:  el.lon  ?? el.center?.lon,
+        tags: el.tags || {},
+      })).filter(el => el.lat != null && el.lng != null);
+    } catch(e) {
+      if (attempt === 0) { await new Promise(r => setTimeout(r, 1500)); continue; }
+      throw e;
+    }
+  }
+}
+
+function filterPoiByDistance(poiList, polyline, maxKm = 2.0) {
+  const simplPoly = _downsampleCoords(
+    polyline.map(p => [p.lng, p.lat]), 60
+  ).map(([lng, lat]) => ({ lat, lng }));
+
+  return poiList
+    .map(poi => {
+      const dist = distToPolyline({ lat: poi.lat, lng: poi.lng }, simplPoly);
+      return { ...poi, distKm: Math.round(dist * 10) / 10 };
+    })
+    .filter(poi => poi.distKm <= maxKm)
+    .sort((a, b) => {
+      // Trier par position le long du tracé
+      const pA = projectionOnPolyline({ lat: a.lat, lng: a.lng }, simplPoly);
+      const pB = projectionOnPolyline({ lat: b.lat, lng: b.lng }, simplPoly);
+      return pA - pB;
+    });
+}
+
+function poiDisplayName(tags) {
+  if (tags.name)        return tags.name;
+  if (tags['name:fr'])  return tags['name:fr'];
+  if (tags.ref)         return tags.ref;
+  // Fallback par type
+  if (tags.natural === 'spring')            return 'Source';
+  if (tags.amenity === 'drinking_water')    return 'Fontaine / eau potable';
+  if (tags.amenity === 'watering_place')    return 'Abreuvoir';
+  if (tags.natural === 'water')             return 'Plan d\'eau';
+  if (tags.tourism === 'farm')              return tags.operator || 'Ferme';
+  if (tags.tourism === 'camp_site')         return 'Camping';
+  if (tags.tourism === 'caravan_site')      return 'Aire camping-car';
+  if (tags.tourism === 'hostel')            return 'Auberge';
+  if (tags.tourism === 'guest_house')       return 'Chambre d\'hôtes';
+  if (tags.tourism === 'picnic_site')       return 'Aire de pique-nique';
+  if (tags.amenity === 'shelter')           return 'Abri / refuge';
+  if (tags.landuse === 'farmyard')          return 'Exploitation agricole';
+  if (tags.shop === 'supermarket')          return 'Supermarché';
+  if (tags.shop === 'convenience')          return 'Épicerie';
+  if (tags.shop === 'greengrocer')          return 'Primeur';
+  if (tags.shop === 'bakery')               return 'Boulangerie';
+  if (tags.shop === 'butcher')              return 'Boucherie';
+  if (tags.shop === 'farm')                 return 'Vente à la ferme';
+  if (tags.amenity === 'marketplace')       return 'Marché';
+  return 'Point d\'intérêt';
+}
+
+function poiTypeLabel(tags) {
+  if (tags.natural === 'spring')            return 'Source';
+  if (tags.amenity === 'drinking_water')    return 'Eau potable';
+  if (tags.amenity === 'watering_place')    return 'Abreuvoir';
+  if (tags.natural === 'water')             return 'Eau';
+  if (tags.tourism === 'farm')              return 'Ferme';
+  if (tags.tourism === 'camp_site')         return 'Camping';
+  if (tags.tourism === 'caravan_site')      return 'Camping-car';
+  if (tags.tourism === 'hostel')            return 'Auberge';
+  if (tags.tourism === 'guest_house')       return 'Gîte';
+  if (tags.tourism === 'picnic_site')       return 'Pique-nique';
+  if (tags.amenity === 'shelter')           return 'Refuge';
+  if (tags.landuse === 'farmyard')          return 'Ferme';
+  if (tags.shop === 'supermarket')          return 'Supermarch\xe9';
+  if (tags.shop === 'convenience')          return '\xc9picerie';
+  if (tags.shop === 'greengrocer')          return 'Primeur';
+  if (tags.shop === 'bakery')               return 'Boulangerie';
+  if (tags.shop === 'butcher')              return 'Boucherie';
+  if (tags.shop === 'farm')                 return 'Vente ferme';
+  if (tags.amenity === 'marketplace')       return 'March\xe9';
+  return 'POI';
+}
+
+async function fetchAllPoi(coords) {
+  const { overpassStr } = routeBboxWithMargin(coords);
+  const polyline = coords.map(([lng, lat]) => ({ lat, lng }));
+
+  const [eauRaw, haltesRaw, ravRaw] = await Promise.all([
+    fetchOverpassPoi(POI_CATEGORIES.eau.query(overpassStr)).catch(() => []),
+    fetchOverpassPoi(POI_CATEGORIES.haltes.query(overpassStr)).catch(() => []),
+    fetchOverpassPoi(POI_CATEGORIES.ravitaillement.query(overpassStr)).catch(() => []),
+  ]);
+
+  function enrich(list, cat) {
+    return filterPoiByDistance(list, polyline, 2.0).map(p => ({
+      ...p,
+      name: poiDisplayName(p.tags),
+      typeLabel: poiTypeLabel(p.tags),
+      category: cat,
+    }));
+  }
+
+  return {
+    eau:            enrich(eauRaw,    'eau'),
+    haltes:         enrich(haltesRaw, 'haltes'),
+    ravitaillement: enrich(ravRaw,    'ravitaillement'),
+  };
+}
+
+function kmlRenderPoi(poiData) {
+  if (kmlPoiLayer) { map.removeLayer(kmlPoiLayer); kmlPoiLayer = null; }
+  kmlPoiLayer = L.layerGroup().addTo(map);
+
+  const catConfig = {
+    eau:            { color: '#60a5fa', emoji: '💧' },
+    haltes:         { color: '#fb923c', emoji: '🏡' },
+    ravitaillement: { color: '#4ade80', emoji: '🛒' },
+  };
+
+  for (const [cat, list] of Object.entries(poiData)) {
+    const { color, emoji } = catConfig[cat] || { color: '#fff', emoji: '📍' };
+    for (const poi of list) {
+      const marker = L.circleMarker([poi.lat, poi.lng], {
+        radius: 6, color, fillColor: color,
+        fillOpacity: 0.9, weight: 2,
+      }).bindPopup(
+        `<b>${emoji} ${escapeHtml(poi.name)}</b><br>` +
+        `<small>${escapeHtml(poi.typeLabel)} · ${poi.distKm} km du tracé</small><br>` +
+        `<small style="color:#999">${poi.lat.toFixed(5)}, ${poi.lng.toFixed(5)}</small>`
+      );
+      kmlPoiLayer.addLayer(marker);
+      poi._marker = marker;
+    }
+  }
+}
+
+function kmlRenderPoiSidebar(poiData) {
+  const section = document.getElementById('kml-poi-section');
+  if (!section) return;
+
+  const catConfig = {
+    eau:            { emoji: '💧', label: 'Points d\'eau',      color: '#60a5fa' },
+    haltes:         { emoji: '🏡', label: 'Haltes / Partenaires', color: '#fb923c' },
+    ravitaillement: { emoji: '🛒', label: 'Ravitaillement',     color: '#4ade80' },
+  };
+
+  const total = Object.values(poiData).reduce((s, arr) => s + arr.length, 0);
+  if (!total) {
+    section.innerHTML = '<div class="kml-poi-empty">Aucun point d\'intérêt trouvé à 2 km du tracé</div>';
+    return;
+  }
+
+  section.innerHTML = '<h2 style="margin:12px 0 8px">Points d\'intérêt à 2 km</h2>';
+
+  for (const [cat, list] of Object.entries(poiData)) {
+    const cfg = catConfig[cat];
+    const group = document.createElement('div');
+    group.className = 'kml-poi-group';
+
+    const header = document.createElement('div');
+    header.className = 'kml-poi-group-header';
+    header.innerHTML = `
+      <span>${cfg.emoji} ${escapeHtml(cfg.label)}</span>
+      <span class="kml-poi-count">${list.length} résultat${list.length !== 1 ? 's' : ''}</span>
+      <span class="kml-poi-chevron">▾</span>`;
+    header.addEventListener('click', () => {
+      const listEl = group.querySelector('.kml-poi-list');
+      const open   = listEl.style.display !== 'none';
+      listEl.style.display = open ? 'none' : 'block';
+      header.querySelector('.kml-poi-chevron').textContent = open ? '▸' : '▾';
+    });
+    group.appendChild(header);
+
+    const listEl = document.createElement('div');
+    listEl.className = 'kml-poi-list';
+
+    if (!list.length) {
+      listEl.innerHTML = '<div style="font-size:11px;color:var(--text-lo);padding:8px 10px">Aucun résultat</div>';
+    } else {
+      for (const poi of list) {
+        const item = document.createElement('div');
+        item.className = 'kml-poi-item';
+        item.innerHTML = `
+          <span class="kml-poi-dot" style="background:${cfg.color}"></span>
+          <span class="kml-poi-item-name">${escapeHtml(poi.name)}</span>
+          <span class="kml-poi-item-type">${escapeHtml(poi.typeLabel)}</span>
+          <span class="kml-poi-dist">${poi.distKm} km</span>`;
+        item.addEventListener('click', () => {
+          map.panTo([poi.lat, poi.lng], { animate: true, duration: 0.5 });
+          if (poi._marker) poi._marker.openPopup();
+        });
+        listEl.appendChild(item);
+      }
+    }
+    group.appendChild(listEl);
+    section.appendChild(group);
+  }
+
+  // Attribution OSM
+  const attr = document.createElement('div');
+  attr.style.cssText = 'font-size:10px;color:var(--text-lo);text-align:center;margin-top:10px;padding-bottom:6px';
+  attr.textContent = '© OpenStreetMap contributors (ODbL)';
+  section.appendChild(attr);
 }
 
 // ── Drop zone ─────────────────────────────────────────────────────────────────

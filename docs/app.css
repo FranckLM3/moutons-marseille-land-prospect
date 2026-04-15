@@ -900,3 +900,113 @@
   from { opacity: 0; transform: translateY(4px); }
   to   { opacity: 1; transform: translateY(0); }
 }
+
+/* ── Sélecteur de source itinéraire ─────────────────────────────────────── */
+.route-source-toggle {
+  display: flex;
+  gap: 4px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 4px;
+  margin-bottom: 14px;
+}
+.route-mode-btn {
+  flex: 1;
+  padding: 8px 0;
+  border: none;
+  border-radius: 7px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  color: var(--text-lo);
+  background: transparent;
+  transition: background 0.15s, color 0.15s;
+}
+.route-mode-btn:hover { color: var(--text-hi); background: var(--bg-hover); }
+.route-mode-btn.active {
+  background: var(--accent);
+  color: #111;
+  box-shadow: 0 1px 6px rgba(74,222,128,.35);
+}
+
+/* ── POI groups ──────────────────────────────────────────────────────────── */
+.kml-poi-group {
+  margin-bottom: 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.kml-poi-group-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-hi);
+  background: var(--bg-card);
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.12s;
+}
+.kml-poi-group-header:hover { background: var(--bg-hover); }
+.kml-poi-count {
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--text-lo);
+  margin-left: auto;
+}
+.kml-poi-chevron {
+  font-size: 11px;
+  color: var(--text-lo);
+  flex-shrink: 0;
+  margin-left: 4px;
+}
+.kml-poi-list { padding: 4px 6px 6px; }
+.kml-poi-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 8px;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: background 0.12s;
+  font-size: 12px;
+}
+.kml-poi-item:hover { background: var(--bg-hover); }
+.kml-poi-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.kml-poi-item-name {
+  flex: 1;
+  color: var(--text-hi);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.kml-poi-item-type {
+  color: var(--text-lo);
+  font-size: 10px;
+  flex-shrink: 0;
+}
+.kml-poi-dist {
+  color: var(--text-lo);
+  font-size: 10px;
+  flex-shrink: 0;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 5px;
+  white-space: nowrap;
+}
+.kml-poi-empty {
+  font-size: 11px;
+  color: var(--text-lo);
+  text-align: center;
+  padding: 12px 0;
+}

@@ -30,6 +30,39 @@
     /* ── Map ── */
     #map { position: fixed; inset: 0; left: var(--sidebar-w); z-index: 0; }
 
+    #map-loader {
+      display: none;
+      position: fixed;
+      inset: 0;
+      left: var(--sidebar-w);
+      z-index: 500;
+      pointer-events: none;
+      align-items: center;
+      justify-content: center;
+    }
+    #map-loader.active { display: flex; }
+    .map-loader-box {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px 20px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+      font-size: 14px;
+      color: var(--text-hi);
+    }
+    .map-loader-spinner {
+      width: 20px;
+      height: 20px;
+      border: 2px solid var(--border);
+      border-top-color: #60a5fa;
+      border-radius: 50%;
+      animation: poi-spin 0.7s linear infinite;
+      flex-shrink: 0;
+    }
+
     /* ── Sidebar ── */
     #sidebar {
       position: fixed;
@@ -489,6 +522,7 @@
       }
       #sidebar.open { left: 0; }
       #map { left: 0; }
+      #map-loader { left: 0; }
       #mobile-toggle { display: flex; align-items: center; gap: 6px; }
     }
 

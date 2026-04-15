@@ -659,6 +659,17 @@ if (toggleOcsEl) {
   });
 }
 
+function showMapLoader(label = 'Chargement…') {
+  const el = document.getElementById('map-loader');
+  const lb = document.getElementById('map-loader-label');
+  if (lb) lb.textContent = label;
+  if (el) { el.classList.add('active'); el.removeAttribute('aria-hidden'); }
+}
+function hideMapLoader() {
+  const el = document.getElementById('map-loader');
+  if (el) { el.classList.remove('active'); el.setAttribute('aria-hidden', 'true'); }
+}
+
 function showOcsLayer() {
   if (!ocsWmsLayer) {
     ocsWmsLayer = L.tileLayer(IGN_WMTS_URL, {
@@ -1321,26 +1332,36 @@ function _downsampleCoords(coords, maxPts = 30) {
   return result;
 }
 
-async function _findCorridorInMemory(allCoords, radiusKm, minArea) {
+async function _findCorridorInMemory(segments, radiusKm, minArea) {
+  // segments = tableau de tableaux de coords [[lng,lat], ...] — un par fichier KML/GPX
+  const allCoords = segments.flat();
+
   // 1. Charger les communes dont la bbox intersecte le corridor
   await _loadCommunesForRouteBbox(allCoords);
 
-  // 2. Polyligne simplifiée à 30 pts pour distToPolyline (réduction ~16x du nb de segments)
-  const simplCoords  = _downsampleCoords(allCoords, 30);
-  const polyline     = simplCoords.map(([lng, lat]) => ({ lat, lng }));
+  // 2. Une polyligne simplifiée PAR segment (pas de concaténation : évite les segments
+  //    fantômes entre le bout d'un fichier et le début du suivant)
+  const polylines = segments
+    .filter(s => s.length >= 2)
+    .map(s => _downsampleCoords(s, 30).map(([lng, lat]) => ({ lat, lng })));
 
-  // 3. Bbox du corridor élargie de radiusKm (pré-filtre bbox O(1) avant distance O(n))
+  // 3. Bbox du corridor élargie de radiusKm
   const DEG_PER_KM   = 1 / 111;
   const pad          = radiusKm * DEG_PER_KM;
   const rb           = _routeBbox(allCoords);
   const corridorBbox = [rb[0] - pad, rb[1] - pad, rb[2] + pad, rb[3] + pad];
 
-  // 4. Filtrer toutes les features du cache
+  // 4. Filtrer uniquement les communes intersectant le tracé actuel (pas tout le cache)
+  const routeBbox = _routeBbox(allCoords);
+  const relevantNames = communeIndex
+    .filter(c => bboxIntersects(c.bbox, routeBbox) && c.name in communeCache)
+    .map(c => c.name);
+
   const seen    = new Set();
   const results = [];
 
-  for (const features of Object.values(communeCache)) {
-    for (const feature of features) {
+  for (const name of relevantNames) {
+    for (const feature of communeCache[name] || []) {
       const id = feature.properties?.id;
       if (!id || seen.has(id)) continue;
       if ((feature.properties?.area_m2 || 0) < minArea) continue;
@@ -1348,18 +1369,20 @@ async function _findCorridorInMemory(allCoords, radiusKm, minArea) {
       const c = centroid(feature);
       if (!c) continue;
 
-      // Pré-filtre bbox : élimine ~80 % des features sans calcul de distance
+      // Pré-filtre bbox
       if (c.lng < corridorBbox[0] || c.lng > corridorBbox[2] ||
           c.lat < corridorBbox[1] || c.lat > corridorBbox[3]) continue;
 
-      if (distToPolyline(c, polyline) <= radiusKm) {
+      // Distance minimale à l'un des segments réels (pas de segment fantôme)
+      const minDist = Math.min(...polylines.map(pl => distToPolyline(c, pl)));
+      if (minDist <= radiusKm) {
         seen.add(id);
         results.push(feature);
       }
     }
   }
 
-  console.log(`[corridor] in-memory: ${results.length} parcelles dans ${radiusKm} km (polyline ${allCoords.length}→${simplCoords.length} pts)`);
+  console.log(`[corridor] in-memory: ${results.length} parcelles dans ${radiusKm} km (${segments.length} segment(s))`);
   return results;
 }
 
@@ -1430,7 +1453,7 @@ async function computeRoute(keepSelected = false) {
       setRouteStatus('Recherche des parcelles sur le trajet…', '');
 
       const allCoords = baseData.features[0].geometry.coordinates;
-      const corridorFeatures = await _findCorridorInMemory(allCoords, radiusKm, minArea);
+      const corridorFeatures = await _findCorridorInMemory([allCoords], radiusKm, minArea);
 
       candidateParcels = corridorFeatures
         .map(feature => ({ feature, center: centroid(feature), id: feature.properties?.id || '' }))
@@ -2197,6 +2220,7 @@ function kmlRemoveFile(index) {
 }
 
 function kmlClearAll() {
+  hideMapLoader();
   kmlLoadedFiles = [];
   kmlLocalities  = [];
   kmlPoiData     = null;
@@ -2264,7 +2288,7 @@ async function kmlRunExtraction() {
   progressLabel.textContent = 'Recherche des terrains…';
   progressBar.style.width   = '5%';
 
-  const corridorFeatures = await _findCorridorInMemory(allCoords, radiusKm, minArea);
+  const corridorFeatures = await _findCorridorInMemory(kmlLoadedFiles.map(f => f.coords), radiusKm, minArea);
   _kmlRenderParcelLayer(corridorFeatures);
 
   // ── Étape 2 : communes ────────────────────────────────────────────────────
@@ -2280,16 +2304,18 @@ async function kmlRunExtraction() {
   // ── Étape 3 : POI Overpass ────────────────────────────────────────────────
   progressLabel.textContent = 'Recherche des points d\'intérêt…';
   progressBar.style.width   = '85%';
-  if (poiSection) poiSection.innerHTML = '<div class="poi-loading"><span class="poi-spinner"></span>Chargement des points d\'intérêt…</div>';
+  showMapLoader('Chargement des points d\'intérêt…');
 
   try {
-    kmlPoiData = await fetchAllPoi(allCoords);
+    kmlPoiData = await fetchAllPoi(kmlLoadedFiles.map(f => f.coords));
+    hideMapLoader();
     kmlRenderPoi(kmlPoiData);
     kmlRenderPoiSidebar(kmlPoiData);
     const poiTotal = Object.values(kmlPoiData).reduce((s, arr) => s + arr.length, 0);
     const poiEl = document.getElementById('kml-stat-poi');
     if (poiEl) poiEl.textContent = poiTotal;
   } catch(e) {
+    hideMapLoader();
     console.warn('[kml] POI fetch failed:', e);
     if (poiSection) poiSection.innerHTML =
       '<div style="font-size:11px;color:var(--text-lo);text-align:center;padding:8px">Points d\'intérêt indisponibles (Overpass)</div>';
@@ -2627,10 +2653,13 @@ function poiTypeLabel(tags) {
   return 'POI';
 }
 
-async function fetchAllPoi(coords) {
-  const { overpassStr } = routeBboxWithMargin(coords);
-  const polyline = coords.map(([lng, lat]) => ({ lat, lng }));
-  const polyCache = _buildPolylineCache(polyline);
+async function fetchAllPoi(segments) {
+  const allCoords = segments.flat();
+  const { overpassStr } = routeBboxWithMargin(allCoords);
+  // Un cache par segment — distance min = distance au segment le plus proche (pas de fantôme)
+  const polyCaches = segments
+    .filter(s => s.length >= 2)
+    .map(s => _buildPolylineCache(s.map(([lng, lat]) => ({ lat, lng }))));
 
   const [eauRaw, haltesRaw, ravRaw, lieuxRaw] = await Promise.all([
     fetchOverpassPoi(POI_CATEGORIES.eau.query(overpassStr)).catch(() => []),
@@ -2639,8 +2668,17 @@ async function fetchAllPoi(coords) {
     fetchOverpassPoi(POI_CATEGORIES.lieux.query(overpassStr)).catch(() => []),
   ]);
 
+  function minDistKm(poi) {
+    const p = { lat: poi.lat, lng: poi.lng };
+    return Math.min(...polyCaches.map(c => distToPolyline(p, c.simplPoly)));
+  }
+
   function enrich(list, cat) {
-    return filterPoiByDistance(list, polyline, 2.0, polyCache).map(p => ({
+    return list
+      .map(poi => ({ ...poi, distKm: Math.round(minDistKm(poi) * 10) / 10 }))
+      .filter(poi => poi.distKm <= 2.0)
+      .sort((a, b) => a.distKm - b.distKm)
+      .map(p => ({
       ...p,
       name:      poiDisplayName(p.tags),
       typeLabel: poiTypeLabel(p.tags),

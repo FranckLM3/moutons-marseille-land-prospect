@@ -197,6 +197,14 @@ function escapeHtml(value) {
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
+/** Valide un URL OSM : autorise http/https uniquement (bloque javascript:, data:, etc.) */
+function safeUrl(raw) {
+  try {
+    const u = new URL(String(raw));
+    return (u.protocol === 'https:' || u.protocol === 'http:') ? raw : '#';
+  } catch { return '#'; }
+}
+
 function makeDomId(value) {
   return encodeURIComponent(String(value)).replace(/%/g, '_');
 }
@@ -2660,7 +2668,7 @@ function kmlRenderPoi(poiData) {
         const phoneHtml   = (showContact && poi.phone)
           ? `<div class="poi-popup-contact"><a href="tel:${escapeHtml(poi.phone)}">${escapeHtml(poi.phone)}</a></div>` : '';
         const webHtml     = (showContact && poi.website)
-          ? `<div class="poi-popup-contact"><a href="${escapeHtml(poi.website)}" target="_blank" rel="noopener">Site web</a></div>` : '';
+          ? `<div class="poi-popup-contact"><a href="${escapeHtml(safeUrl(poi.website))}" target="_blank" rel="noopener noreferrer">Site web</a></div>` : '';
         const hoursHtml   = (showContact && poi.hours)
           ? `<div class="poi-popup-hours">${escapeHtml(poi.hours)}</div>` : '';
         return `<div class="poi-popup">

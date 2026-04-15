@@ -1915,16 +1915,15 @@ function sampleRoutePoints(coords, stepMeters = 500) {
   return result;
 }
 
-// ── Reverse geocoding avec double fallback ────────────────────────────────────
+// ── Reverse geocoding (api-adresse.data.gouv.fr — France uniquement, CORS OK) ─
 async function reverseGeocodePoint(lng, lat) {
-  // Tentative 1 : api-adresse.data.gouv.fr
   try {
     const url = `https://api-adresse.data.gouv.fr/reverse/?lon=${lng}&lat=${lat}&limit=3`;
     const res = await fetch(url);
     if (res.ok) {
       const json = await res.json();
-      // Prefer locality/hamlet results over municipality/street for finer granularity
       const feats = json.features || [];
+      // Prefer locality then municipality over street/housenumber
       const best  = feats.find(f => f.properties.type === 'locality')
                  || feats.find(f => f.properties.type === 'municipality')
                  || feats[0];
@@ -1933,34 +1932,11 @@ async function reverseGeocodePoint(lng, lat) {
         const type = p.type || 'municipality';
         const insee = p.citycode || '';
         const dept  = _parseDept(p.postcode || insee);
-        // For locality features, use the locality name; for municipality use city
-        const name = (type === 'locality') ? (p.name || p.city) : (p.city || p.municipality || p.name);
+        const name  = (type === 'locality') ? (p.name || p.city) : (p.city || p.municipality || p.name);
         if (name) return { name, insee, dept, type };
       }
     }
   } catch(_) {}
-
-  // Tentative 2 : Nominatim (zoom=16 for hamlet-level precision)
-  try {
-    const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&addressdetails=1&zoom=16&accept-language=fr`;
-    const res = await fetch(url, { headers: { 'User-Agent': 'MoutonsMarseillais-TranshumanceMapper/1.0' } });
-    if (res.ok) {
-      const json = await res.json();
-      const addr = json.address || {};
-      // hamlet > village > suburb > town > city — prefer smallest unit
-      const name = addr.hamlet || addr.village || addr.suburb || addr.town || addr.city || addr.municipality;
-      if (name) {
-        const postcode = addr.postcode || '';
-        const dept = _parseDept(postcode);
-        const type = addr.hamlet  ? 'hamlet'
-                   : addr.village ? 'locality'
-                   : addr.town    ? 'municipality'
-                   : 'municipality';
-        return { name, insee: '', dept, type };
-      }
-    }
-  } catch(_) {}
-
   return null;
 }
 

@@ -314,6 +314,9 @@ const satellite = L.tileLayer(
 satellite.addTo(map);
 L.control.layers({ 'Carte': osmLayer, 'Satellite': satellite }, {}, { position: 'bottomright' }).addTo(map);
 
+// ── Visibilité des couches (déclaré ici pour être accessible dans l'IIFE ci-dessous) ──
+const layerVisible = { terrains: false, route: true, communes: true, poi: true, vegetation: true };
+
 // ── Contrôle de visibilité des couches ───────────────────────────────────
 (function _initLayerControl() {
   const LAYERS_CONFIG = [
@@ -1781,9 +1784,6 @@ function _pointInGeometry(lat, lng, geometry) {
 
 // ── Source de l'itinéraire ────────────────────────────────────────────────────
 let routeMode = 'ors'; // 'ors' | 'kml'
-
-// ── Visibilité des couches cartographiques ────────────────────────────────────
-const layerVisible = { terrains: false, route: true, communes: true, poi: true, vegetation: true };
 
 function _getLayerRefs(key) {
   const refs = [];

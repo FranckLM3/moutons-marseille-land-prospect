@@ -18,11 +18,13 @@ import time
 import urllib.request
 from pathlib import Path
 
+from shapely.geometry import shape, mapping
+
 PACA_DEPTS      = ["04", "05", "06", "13", "83", "84"]
 BORDER_DEPTS    = ["01", "07", "26", "30", "34", "38", "48", "73"]
 DEFAULT_DEPTS   = PACA_DEPTS + BORDER_DEPTS
 
-BASE_URL = "https://geo.api.gouv.fr/departements/{dept}/communes?fields=nom,code,contour&format=geojson"
+BASE_URL = "https://geo.api.gouv.fr/departements/{dept}/communes?fields=nom,code&format=geojson&geometry=contour"
 
 OUT_PATH = Path(__file__).parent.parent / "docs" / "data" / "geo" / "communes-paca.geojson"
 
@@ -82,9 +84,17 @@ def main():
     all_features: list[dict] = []
     for i, dept in enumerate(depts):
         features = download_dept(dept)
-        # Ajoute la bbox précalculée dans les properties pour le frontend
+        # Simplification + bbox pour chaque feature
         for f in features:
-            bbox = build_bbox(f.get("geometry") or {})
+            geom = f.get("geometry")
+            if geom:
+                try:
+                    s = shape(geom).simplify(0.001, preserve_topology=True)
+                    f["geometry"] = mapping(s)
+                    geom = f["geometry"]
+                except Exception:
+                    pass
+            bbox = build_bbox(geom or {})
             if bbox:
                 f["properties"]["bbox"] = bbox
         all_features.extend(features)

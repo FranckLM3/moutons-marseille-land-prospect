@@ -2440,14 +2440,24 @@ function routeBboxWithMargin(coords, marginDeg = 0.025) {
 }
 
 async function fetchOverpassPoi(overpassQuery) {
+  const ENDPOINTS = [
+    'https://overpass-api.de/api/interpreter',
+    'https://overpass.kumi.systems/api/interpreter',
+  ];
   const body = 'data=' + encodeURIComponent(overpassQuery);
-  for (let attempt = 0; attempt < 2; attempt++) {
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const url = ENDPOINTS[attempt % ENDPOINTS.length];
     try {
-      const res = await fetch('https://overpass-api.de/api/interpreter', {
+      const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body,
       });
+      if (res.status === 429 || res.status === 504) {
+        // Rate-limited or gateway timeout — backoff before retry
+        await new Promise(r => setTimeout(r, 3000 * (attempt + 1)));
+        continue;
+      }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
       return (json.elements || []).map(el => ({
@@ -2457,10 +2467,11 @@ async function fetchOverpassPoi(overpassQuery) {
         tags: el.tags || {},
       })).filter(el => el.lat != null && el.lng != null);
     } catch(e) {
-      if (attempt === 0) { await new Promise(r => setTimeout(r, 1500)); continue; }
+      if (attempt < 3) { await new Promise(r => setTimeout(r, 2000 * (attempt + 1))); continue; }
       throw e;
     }
   }
+  return [];
 }
 
 function filterPoiByDistance(poiList, polyline, maxKm = 2.0) {

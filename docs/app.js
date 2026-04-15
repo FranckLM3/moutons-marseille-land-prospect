@@ -2237,13 +2237,18 @@ async function kmlRunExtraction() {
   const allCoords = mergeAndOrderCoords(kmlLoadedFiles);
   const totalKm   = totalRouteKm(allCoords);
 
-  // Afficher le tracé sur la carte
+  // Afficher le tracé — une polyligne par fichier pour éviter les traits droits entre segments
   if (kmlRouteLayer) map.removeLayer(kmlRouteLayer);
-  kmlRouteLayer = _addLayerIfVisible(L.polyline(
-    allCoords.map(([lng, lat]) => [lat, lng]),
-    { color: '#f43f5e', weight: 4, opacity: 0.9, dashArray: '8 5' }
-  ), 'route');
-  map.fitBounds(kmlRouteLayer.getBounds(), { padding: [30, 30] });
+  const lineStyle = { color: '#f43f5e', weight: 4, opacity: 0.9, dashArray: '8 5' };
+  kmlRouteLayer = _addLayerIfVisible(
+    L.layerGroup(
+      kmlLoadedFiles
+        .filter(f => f.coords.length > 0)
+        .map(f => L.polyline(f.coords.map(([lng, lat]) => [lat, lng]), lineStyle))
+    ),
+    'route'
+  );
+  try { map.fitBounds(L.featureGroup(kmlRouteLayer.getLayers()).getBounds(), { padding: [30, 30] }); } catch(_) {}
 
   const progressWrap  = document.getElementById('kml-progress-wrap');
   const progressLabel = document.getElementById('kml-progress-label');
